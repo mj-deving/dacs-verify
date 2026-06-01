@@ -1,0 +1,19 @@
+{
+  "bundleVersion": "1",
+  "jobId": "job-htlc9-asymmetric",
+  "outcome": "failure",
+  "reason": "dest-revealed-source-unclaimed",
+  "paymentTxRefs": [
+    {
+      "kind": "htlc-lock",
+      "chain": "eth-sepolia",
+      "tx": "eth-sepolia:0xlock…"
+    },
+    {
+      "kind": "htlc-reveal",
+      "chain": "polygon-amoy",
+      "tx": "polygon-amoy:0xreveal9c1a…htlc-reveal"
+    }
+  ],
+  "anchoredAt": 1779999970000
+}

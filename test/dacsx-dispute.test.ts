@@ -180,6 +180,23 @@ test("ISC-30: no-fault remedy is valid", () => {
   expect(validateRemedy({ kind: "no-fault" }).ok).toBe(true);
 });
 
+test("ISC-42: correction-ordered remedy (HTLC-9 seam) requires outcome=failure + reason + revealTxRef", () => {
+  expect(validateRemedy({ kind: "correction-ordered", correctedOutcome: "failure", reason: "dest-revealed-source-unclaimed", revealTxRef: "polygon-amoy:0xreveal" }).ok).toBe(true);
+  // MUST NOT close as a refund/success — that double-pays the payee already paid on the dest chain (§9.8)
+  expect(validateRemedy({ kind: "correction-ordered", correctedOutcome: "success", reason: "x", revealTxRef: "y" } as unknown as RemedyDecision).ok).toBe(false);
+  // missing htlc-reveal txRef rejected
+  expect(validateRemedy({ kind: "correction-ordered", correctedOutcome: "failure", reason: "dest-revealed-source-unclaimed", revealTxRef: "" }).ok).toBe(false);
+});
+
+test("ISC-43: correction-ordered reweight voids the contribution (HTLC-9 failure), prior preserved", () => {
+  const record = makeRecord(buyer);
+  const corr = makeOutcome(record, arbitrator, { kind: "correction-ordered", correctedOutcome: "failure", reason: "dest-revealed-source-unclaimed", revealTxRef: "polygon-amoy:0xreveal" });
+  const re = reputationReweight({ jobId, weight: 1 }, corr);
+  expect(re.effectiveWeight).toBe(0);
+  expect(re.priorWeight).toBe(1);
+  expect(re.adjudicated).toBe(true);
+});
+
 // ── ISC-31: reputation reweight (supersede-with-provenance) ───────────────────
 test("ISC-31: a refund voids the disputed contribution and records provenance", () => {
   const record = makeRecord(buyer);

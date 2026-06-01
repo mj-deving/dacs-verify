@@ -28,16 +28,19 @@
 
 The load-bearing design point: **arbitrator legitimacy binds at *agreement* time** (a content-hashed `rule-ref`, §8.4.3 pattern), not at dispute time — so the losing party can't reject the arbitrator after the fact. The reputation reweight is **non-destructive** (preserves the prior weight, derives an effective weight, carries the outcome hash) so the record shows *why* a weight changed; whether the ratified DACS-5 wants destructive supersede or an append-only event log is an open question.
 
-`examples/` holds a demo **issuer kit** (the only place a private key ever lives — the verifier in `src/` never signs) and a runnable scenario that produces byte-stable, **illustrative** vectors in `vectors/dacs-x/` — non-normative candidates for §14 dispute fixtures, **not** conformance vectors for a ratified spec.
+`examples/` holds a demo **issuer kit** (the only place a private key ever lives — the verifier in `src/` never signs) and runnable scenarios that produce byte-stable, **illustrative** vectors in `vectors/dacs-x/` — non-normative candidates for §14 dispute fixtures, **not** conformance vectors for a ratified spec.
+
+**The settlement → dispute seam (HTLC-9, §9.5.4 / §9.8).** DACS-X isn't only forward-design: settlement specifies the asymmetric cross-chain state `dest-revealed-source-unclaimed` (the payee was paid on the *destination* chain but the *source* claim failed) yet **defers its closure to "dispute or manual intervention" — i.e. DACS-X.** `examples/htlc9-dispute-scenario.ts` closes exactly that state via a §9.7.1 `correction` amendment — never a refund, which would double-pay a payee already paid on the destination chain. It's the natural coordination point with the HTLC settlement lane.
 
 > **Proposed & non-normative.** DACS-X is not part of DACS v0.1. The `dacs-x-*` separator namespace and these artifact shapes presuppose design choices the steward owns. The prototype exists to make a §11.2.1 discussion concrete — not to assert a standard. The tests verify the prototype's internal self-consistency, **not** conformance to any ratified DACS-X (none exists yet).
 
 ## Run
 
 ```bash
-bun test                          # 52 tests (foundation + DACS-X dispute)
-bun examples/dispute-scenario.ts  # end-to-end §10.4.3 dispute → arbitrated → reputation reweighted; emits illustrative vectors
-bun run typecheck                 # strict tsc --noEmit, clean
+bun test                                # 55 tests (foundation + DACS-X dispute + HTLC-9 seam)
+bun examples/dispute-scenario.ts        # §10.4.3 divergent-bundle dispute → arbitrated → reputation reweighted
+bun examples/htlc9-dispute-scenario.ts  # the HTLC-9 settlement seam → correction amendment (not a refund)
+bun run typecheck                       # strict tsc --noEmit, clean
 ```
 
 ## Conformance observations encoded as executable tests (`test/`)

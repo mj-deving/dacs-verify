@@ -1,0 +1,14 @@
+{
+  "dacsXVersion": "1",
+  "disputeId": "dispute-htlc9-0001",
+  "disputeRecordHash": "c164037a0f27df863183ce817b17616e14bf723b326093b7039658d09c716771",
+  "arbitrator": "did:arbitrator:settlement-court",
+  "remedy": {
+    "kind": "correction-ordered",
+    "correctedOutcome": "failure",
+    "reason": "dest-revealed-source-unclaimed",
+    "revealTxRef": "polygon-amoy:0xreveal9c1a…htlc-reveal"
+  },
+  "decidedAt": 1780003600000,
+  "signature": "rr9y7eLRS0iFNrPFADsfoTSMmuv0ZsCK5yvoQgLomNj5Hrna9tJYnmojjE3zOqLNTbUHbRRrATNgVmuZs8OfCw"
+}

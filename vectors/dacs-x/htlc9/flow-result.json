@@ -1,0 +1,24 @@
+{
+  "decision": "pass",
+  "steps": [
+    {
+      "name": "dispute-record",
+      "ok": true
+    },
+    {
+      "name": "arbitrator-credential",
+      "ok": true
+    },
+    {
+      "name": "dispute-outcome",
+      "ok": true
+    }
+  ],
+  "reweighted": {
+    "jobId": "job-htlc9-asymmetric",
+    "priorWeight": 1,
+    "effectiveWeight": 0,
+    "adjudicated": true,
+    "adjudicatedBy": "414ce25de513f6bef0241b47db3f9520ce2d52b0c6ff77adf00f73813c1b00f8"
+  }
+}

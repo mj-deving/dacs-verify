@@ -152,3 +152,16 @@ test("ISC-35: dispute pinned to an unknown bundle → FAIL", () => {
   input.knownBundles = [{ jobId: "other-job", bundleHash }];
   expect(verifyDisputeFlow(input).decision).toBe("fail");
 });
+
+test("ISC-44: HTLC-9 asymmetric-settlement dispute closes via correction amendment (flow PASS, reputation voided)", () => {
+  const input = baseInput();
+  input.outcome = makeOutcome(input.record, arbitrator, {
+    kind: "correction-ordered",
+    correctedOutcome: "failure",
+    reason: "dest-revealed-source-unclaimed",
+    revealTxRef: "polygon-amoy:0xreveal",
+  });
+  const res = verifyDisputeFlow(input);
+  expect(res.decision).toBe("pass");
+  expect(res.reweighted?.effectiveWeight).toBe(0);
+});
