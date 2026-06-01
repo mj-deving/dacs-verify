@@ -1,0 +1,12 @@
+{
+  "bundleVersion": "1",
+  "jobId": "job-7f3c-divergent",
+  "phaseSummary": {
+    "delivered": false,
+    "contested": true
+  },
+  "outcome": "divergent",
+  "seller": "did:demos:seller-oJql9Hpn",
+  "buyer": "did:demos:buyer-0EqyMnQr",
+  "anchoredAt": 1779999940000
+}

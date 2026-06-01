@@ -1,0 +1,34 @@
+{
+  "bundleVersion": "1",
+  "presentedBy": "did:arbitrator:acme-court",
+  "presentedAt": 1780000000000,
+  "claims": [
+    {
+      "ref": "did:arbitrator:acme-court",
+      "verifiedBy": {
+        "anchor": {
+          "kind": "sr1-root",
+          "locator": "sr1://acme-court"
+        },
+        "contentHash": "5e94b24df0c3fd40a9df6085d9a3c42c5493afd2a424696dd1200c347b25c0c1",
+        "recipeVersion": 1
+      },
+      "issuedAt": 1779913600000
+    },
+    {
+      "ref": "arbitrator-accreditation:iso-17000:acme",
+      "verifiedBy": {
+        "anchor": {
+          "kind": "sr1-root",
+          "locator": "sr1://iso-17000"
+        },
+        "contentHash": "c1e09b9c51eb88257fe682904a57314436f15039a5963037381b5a22264de170",
+        "recipeVersion": 1
+      },
+      "issuedAt": 1779913600000
+    }
+  ],
+  "presentation": {
+    "kind": "per-claim"
+  }
+}

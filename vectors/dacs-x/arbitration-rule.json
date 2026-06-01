@@ -1,0 +1,16 @@
+{
+  "requirement": {
+    "requirementVersion": "1",
+    "required": [
+      {
+        "scheme": "arbitrator-accreditation",
+        "verificationRequired": true
+      }
+    ],
+    "primaryClaimSelector": "did"
+  },
+  "arbitrators": [
+    "did:arbitrator:acme-court"
+  ],
+  "policyVersion": 1
+}

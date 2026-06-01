@@ -1,0 +1,13 @@
+{
+  "dacsXVersion": "1",
+  "disputeId": "dispute-0001",
+  "disputeRecordHash": "d3ad8686d6d719f262ffd7d8c429cdfbe9209dc0b10cdcbb1c3473f8ad1661dd",
+  "arbitrator": "did:arbitrator:acme-court",
+  "remedy": {
+    "kind": "refund-ordered",
+    "amount": "5",
+    "asset": "usdc"
+  },
+  "decidedAt": 1780003600000,
+  "signature": "T4XDj-3zaBGCqfgYTLYHIfgfaxXKlAmz1tP0Gw2HOZ4SNVDQTo_PKWIvRWMqqSXow2BC8-uSyyplpqD5IPzpAg"
+}

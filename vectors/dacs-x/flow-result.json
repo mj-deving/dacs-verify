@@ -1,0 +1,24 @@
+{
+  "decision": "pass",
+  "steps": [
+    {
+      "name": "dispute-record",
+      "ok": true
+    },
+    {
+      "name": "arbitrator-credential",
+      "ok": true
+    },
+    {
+      "name": "dispute-outcome",
+      "ok": true
+    }
+  ],
+  "reweighted": {
+    "jobId": "job-7f3c-divergent",
+    "priorWeight": 1,
+    "effectiveWeight": 0,
+    "adjudicated": true,
+    "adjudicatedBy": "1e4c8e257d58c9804142bcecb62475be633e16c29479ca18209e02fcd3642182"
+  }
+}

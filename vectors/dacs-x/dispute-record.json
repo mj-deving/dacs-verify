@@ -1,0 +1,18 @@
+{
+  "dacsXVersion": "1",
+  "disputeId": "dispute-0001",
+  "initiator": "did:demos:buyer-0EqyMnQr",
+  "disputed": [
+    {
+      "jobId": "job-7f3c-divergent",
+      "bundleHash": "33489e630b56e997f15c7b285c12d9193f911bfdc07b897bf30a0c846f805e48"
+    }
+  ],
+  "contestedClaim": "divergent-bundle",
+  "requestedRemedy": "refund",
+  "arbitration": {
+    "ruleRef": "05fcf97fbd69163f5f2ccb71fa95249027cda062641e68b161efdbf6fd7a910e"
+  },
+  "openedAt": 1780000000000,
+  "signature": "fMjDywv_QE2Pq3UOBeBxyjHfCUSnnAC4ZlXMsr7oIJTNbG8cgWBkcFjcGGBW2T53GuYqO63pP6nBRKeIGZpwBg"
+}
