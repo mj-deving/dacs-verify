@@ -1,0 +1,202 @@
+{
+  "dacsVersion": "0.1",
+  "generator": "github.com/mj-deving/dacs-verify",
+  "note": "Golden conformance vectors for the deterministic DACS v0.1 primitive surface (§7.1 canonicalization, §14.4 decimals, §7.7 signing, §6.3 identity). Proposed / non-normative. Run: bun conformance/run.ts",
+  "cases": [
+    {
+      "id": "canon-key-order",
+      "area": "canonicalize",
+      "spec": "§7.1",
+      "summary": "object members ordered by UTF-16 code unit of key",
+      "want": "{\"A\":3,\"a\":2,\"b\":1}"
+    },
+    {
+      "id": "canon-nested",
+      "area": "canonicalize",
+      "spec": "§7.1",
+      "summary": "nested objects sorted; array order preserved",
+      "want": "{\"a\":{\"x\":2,\"y\":1},\"z\":[3,1,2]}"
+    },
+    {
+      "id": "canon-escaping",
+      "area": "canonicalize",
+      "spec": "§7.1",
+      "summary": "only JCS-required escapes are applied",
+      "want": "\"a\\\"b\\\\c\\n\\t\""
+    },
+    {
+      "id": "canon-no-escape-slash",
+      "area": "canonicalize",
+      "spec": "§7.1",
+      "summary": "forward slash and non-ASCII are not escaped",
+      "want": "\"a/bé\""
+    },
+    {
+      "id": "canon-int",
+      "area": "canonicalize",
+      "spec": "§7.1",
+      "summary": "safe integers serialise as plain decimals",
+      "want": "9007199254740991"
+    },
+    {
+      "id": "canon-noninteger-throws",
+      "area": "canonicalize",
+      "spec": "§7.1",
+      "summary": "non-integer numbers are rejected",
+      "want": "throws"
+    },
+    {
+      "id": "canon-without-signature",
+      "area": "canonicalize",
+      "spec": "§7.2",
+      "summary": "the signed scope excludes the signature field",
+      "want": "{\"a\":1}"
+    },
+    {
+      "id": "cd1-trailing-zeros",
+      "area": "decimal",
+      "spec": "§14.4",
+      "summary": "1.50 / 01.5 / 1.500 all canonicalise to 1.5",
+      "want": [
+        "1.5",
+        "1.5",
+        "1.5"
+      ]
+    },
+    {
+      "id": "cd1-normal-forms",
+      "area": "decimal",
+      "spec": "§14.4",
+      "summary": "0.0 → 0 ; .5 → 0.5 ; 0.50 → 0.5",
+      "want": [
+        "0",
+        "0.5",
+        "0.5"
+      ]
+    },
+    {
+      "id": "cd1-reject-exponent",
+      "area": "decimal",
+      "spec": "§14.4",
+      "summary": "exponent / sign-plus / non-numeric are rejected",
+      "want": [
+        "throws",
+        "throws",
+        "throws"
+      ]
+    },
+    {
+      "id": "cd1-economic-equality",
+      "area": "decimal",
+      "spec": "§14.4",
+      "summary": "economically-equal amounts share a content hash; raw strings do not",
+      "want": {
+        "canonicalEqual": true,
+        "rawDiffers": true
+      }
+    },
+    {
+      "id": "cd1-positivity",
+      "area": "decimal",
+      "spec": "§9.3",
+      "summary": "amount MUST be > 0",
+      "want": "throws"
+    },
+    {
+      "id": "sig-roundtrip",
+      "area": "signing",
+      "spec": "§7.7",
+      "summary": "a dacs-1-listing signature verifies under its own separator",
+      "want": {
+        "ok": true,
+        "separator": "dacs-listing:v1:"
+      }
+    },
+    {
+      "id": "sig-tamper",
+      "area": "signing",
+      "spec": "§7.7",
+      "summary": "mutating the signed scope breaks verification",
+      "want": false
+    },
+    {
+      "id": "sig-sig2-cross-domain",
+      "area": "signing",
+      "spec": "§7.7",
+      "summary": "SIG-2: a listing signature does not verify as a bundle signature",
+      "want": false
+    },
+    {
+      "id": "sig-registry-closed-16",
+      "area": "signing",
+      "spec": "§7.7",
+      "summary": "the domain-separator registry is the closed set of 16",
+      "want": 16
+    },
+    {
+      "id": "sig-sig4-dacsx-disjoint",
+      "area": "signing",
+      "spec": "§7.7",
+      "summary": "SIG-4: DACS-X separators are dacs-x-* and disjoint from the §7.7 registry",
+      "want": true
+    },
+    {
+      "id": "dacs1-cci-lei-defect",
+      "area": "dacs1",
+      "spec": "§6.3.3",
+      "summary": "OBSERVATION DACS-VERIFY-0001 (adjacent issue #42): a cci-lei: claim does NOT satisfy a bare lei requirement",
+      "want": false
+    },
+    {
+      "id": "dacs1-cci-lei-named-matches",
+      "area": "dacs1",
+      "spec": "§6.3.1",
+      "summary": "0001 is naming-only: cci-lei: satisfies a cci-lei requirement",
+      "want": true
+    },
+    {
+      "id": "dacs1-tier-laundering-guard",
+      "area": "dacs1",
+      "spec": "§6.3.3",
+      "summary": "step 3b: an unverified presentedBy claim is rejected even if another verified claim satisfies the requirement",
+      "want": false
+    },
+    {
+      "id": "dacs1-listing-intake-ok",
+      "area": "dacs1",
+      "spec": "§6.3.4",
+      "summary": "an intake-only listing (no pay phase) may omit acceptedRails",
+      "want": true
+    },
+    {
+      "id": "dacs1-listing-pay-no-rails-fail",
+      "area": "dacs1",
+      "spec": "§6.3.4",
+      "summary": "step 8: a pay-* phase without acceptedRails fails",
+      "want": {
+        "ok": false,
+        "failedAt": "accepted-rails-conditional"
+      }
+    },
+    {
+      "id": "dacs1-listing-expired-fail",
+      "area": "dacs1",
+      "spec": "§6.3.4",
+      "summary": "an expired validity window is rejected",
+      "want": {
+        "ok": false,
+        "failedAt": "validity-window"
+      }
+    },
+    {
+      "id": "dacs1-native-address",
+      "area": "dacs1",
+      "spec": "§6.3.4",
+      "summary": "OBSERVATION DACS-VERIFY-0003: spec rule yields stor-<64hex> (Demos uses stor-<40hex>; verify on substrate before relying)",
+      "want": {
+        "shape64": true,
+        "notLen40": true
+      }
+    }
+  ]
+}

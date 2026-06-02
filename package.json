@@ -10,7 +10,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "conformance": "bun conformance/run.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

@@ -1,0 +1,17 @@
+{
+  "signing": {
+    "seed": "1111111111111111111111111111111111111111111111111111111111111111",
+    "kind": "dacs-1-listing",
+    "separator": "dacs-listing:v1:",
+    "doc": {
+      "listingId": "conf-listing",
+      "listingVersion": 1
+    },
+    "signature": "fppio4yI01PfnS1TVphR4g1PYsEAdc8Jt1jhmK96yhWfX7vs41z3WuOacKuJhl0NfgzdLOaOh9VcsA4B3rhDBA",
+    "publicKeyHex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+  },
+  "addressing": {
+    "logical": "dacs1:lei:984500ABCDEF12345678:fx-rfq-eur-usd:v1",
+    "native": "stor-ac8d9a32ced4223d0022fba37beb05754c7c695e1599175178a543ff72302f96"
+  }
+}
