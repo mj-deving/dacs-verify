@@ -142,3 +142,73 @@ export interface ReputationReweight {
   /** Content hash of the DisputeOutcome that produced this reweight (provenance). */
   adjudicatedBy: string;
 }
+
+// ── §8.7 transcript disclosure — DACS-X step 3 (arbitrator-disclosure) ────────
+//
+// §8.7 ("A future DACS standard (proposed DACS-X dispute) MAY require selective
+// transcript disclosure under signed party agreement or arbitrator order") is the
+// spec hook this realises. Per steward sign-off DP-1: the full §8.7 transcript is
+// disclosed to the NAMED ARBITRATOR ONLY, producing NO presentable artifact (it
+// is structurally separate from §11.2.7 claim-disclosure — different object
+// [transcript vs claims], different audience [arbitrator vs counterparty], no
+// minimised claim set out). Built from existing primitives only (§7.7 signing,
+// §7.2 hashing, DACS-1 claim refs) — DP-4 "no new cryptography".
+
+/** One signed message in a §8.3.3 channel, referenced by its envelope hash. */
+export interface ChannelMessageRef {
+  /** Per-channel monotonic sequence (§8.3.3), starts at 1. */
+  sequence: number;
+  /** The message author's primary claim reference (CH-3). */
+  author: ClaimReference;
+  /** sha256 hex of the §8.3.3 message envelope (the signed scope). */
+  envelopeHash: string;
+}
+
+/** A signature over a §8.7 / DACS-X scope: signer's claim + base64url raw Ed25519. */
+export interface PartySignature {
+  signer: ClaimReference;
+  /** base64url of the raw 64-byte Ed25519 signature. */
+  signature: string;
+}
+
+/**
+ * §8.7 ChannelTranscript — the ordered sequence of signed channel messages,
+ * private to channel members. Signed over "dacs-transcript:v1:" ||
+ * sha256(JCS(transcript_without_signatures)) per §7.7. The artifact DACS-X step 3
+ * discloses to the arbitrator.
+ */
+export interface ChannelTranscript {
+  transcriptVersion: "1";
+  channelId: string;
+  members: ClaimReference[];
+  messages: ChannelMessageRef[];
+  generatedAt: number;
+  /** One §8.7 signature per channel member (CH-3 authenticity). */
+  signatures: PartySignature[];
+}
+
+/** How a disclosure is authorized (DP-1: "signed party agreement or arbitrator order"). */
+export type DisclosureAuthority = "party-agreement" | "arbitrator-order";
+
+/**
+ * dacs-x-disclosure-grant — authorizes disclosing ONE §8.7 transcript to ONE
+ * named arbitrator for ONE dispute. NON-PRESENTABLE: this is the authorization,
+ * not a re-anchorable disclosure bundle; the verifier consumes it and yields a
+ * boolean "transcript X may be shown to arbitrator Y", nothing re-presentable.
+ *   - authority "party-agreement": signed by ALL transcript members (consent).
+ *   - authority "arbitrator-order": signed by the credentialed arbitrator.
+ */
+export interface DisclosureGrant {
+  dacsXVersion: "1";
+  disputeId: string;
+  /** Binds to the open dispute (§11.2.1 step 1) — same hash as the outcome binds. */
+  disputeRecordHash: string;
+  /** §7.2 content hash of the disclosed transcript's signed scope — anti-substitution. */
+  transcriptHash: string;
+  /** The ONLY permitted recipient — MUST be the credentialed arbitrator (DP-1). */
+  recipient: ClaimReference;
+  authority: DisclosureAuthority;
+  grantedAt: number;
+  /** party-agreement: one per member; arbitrator-order: one (the arbitrator). */
+  signatures: PartySignature[];
+}

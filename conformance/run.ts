@@ -10,10 +10,15 @@
  * so each run is byte-stable. No private key material is stored; seeds are
  * public test material.
  *
- *   bun conformance/run.ts          verify the published primitive vectors (§7.1/§14.4/§7.7/§6.3)
- *   bun conformance/run.ts --emit   (re)write MANIFEST.json + the pinned goldens under vectors/
- *   bun conformance/run.ts --full   also run the §11.2.1 dispute vectors — held from the published
- *                                   golden set pending the #99 shared full-AttestationBundle fixture
+ *   bun conformance/run.ts          run all vectors (24 golden primitives + candidate dispute/disclosure)
+ *   bun conformance/run.ts --emit   (re)write MANIFEST.json + vectors/golden.json
+ *
+ * Two surfaces: GOLDEN (§7.1/§14.4/§7.7/§6.3) is byte-stable AND reference-verifier-
+ * accepted — no two conformant impls can disagree. CANDIDATE (§11.2.1 dispute + §8.7
+ * disclosure) is single-impl: PATH-OS's unmodified verify-bundle returns §7.5.1
+ * indeterminate on the minimal dispute fixtures (it consumes a full §10.4
+ * AttestationBundle), so cross-impl agreement is pending the shared fixture in
+ * interface-issue #99 (DACS-VERIFY-0004). Candidate vectors are labelled as such.
  *
  * An external implementer can read MANIFEST.json (the case index) and
  * vectors/golden.json (the pinned outputs), point their own DACS verifier at the
@@ -38,9 +43,12 @@ import {
   validateListingStructure,
   type IdentityBundle,
   type BundleRequirement,
+  type ClaimReference,
 } from "../src/dacs1.ts";
 import {
   verifyDisputeFlow,
+  verifyTranscriptDisclosure,
+  transcriptContentHash,
   dacsXSeparator,
   disputeRecordHash,
   DACS_X_SEPARATORS,
@@ -49,12 +57,20 @@ import {
   type ArbitrationRule,
   type RemedyDecision,
   type DisputeFlowInput,
+  type ChannelTranscript,
+  type DisclosureGrant,
+  type DisclosureAuthority,
+  type DisclosureInput,
 } from "../src/dacsx/index.ts";
-import { keypairFromSeed, signArtifact } from "../examples/issuer-kit.ts";
+import { keypairFromSeed, signArtifact, type Keypair } from "../examples/issuer-kit.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EMIT = process.argv.includes("--emit");
-const FULL = process.argv.includes("--full"); // also run the §11.2.1 dispute area (held from the published golden set pending #99)
+
+// Areas whose vectors are single-impl candidates (cross-impl agreement pending #99),
+// distinguished from the reference-accepted golden primitive surface.
+const CANDIDATE_AREAS = new Set(["dispute", "disclosure"]);
+const statusOf = (area: string): "golden" | "candidate" => (CANDIDATE_AREAS.has(area) ? "candidate" : "golden");
 
 // ── tiny harness ─────────────────────────────────────────────────────────────
 type Case = { id: string; area: string; spec: string; summary: string; got: unknown; want: unknown };
@@ -191,12 +207,13 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   golden["addressing"] = { logical, native };
 }
 
-// ── §11.2.1 — DACS-X dispute flow (the 4-value decision) ────────────────────
-// Held from the published golden set pending the #99 shared full-AttestationBundle
-// fixture: PATH-OS's unmodified DACS-5 verify-bundle returns §7.5.1 indeterminate on
-// these minimal dispute-layer fixtures, so they are single-impl, not cross-impl golden.
-// Opt in with --full to run/emit them locally.
-if (FULL) {
+// ── §11.2.1 — DACS-X dispute flow (4-value decision) — CANDIDATE ─────────────
+// CANDIDATE, not cross-impl golden (DACS-VERIFY-0004): PATH-OS's unmodified DACS-5
+// verify-bundle returns §7.5.1 indeterminate on these minimal dispute fixtures (it
+// consumes a full §10.4 AttestationBundle). Cross-impl agreement is pending the
+// shared fixture in interface-issue #99. Inputs are constructed deterministically
+// below from public seeds — re-run to regenerate.
+{
   const NOW = 1_780_000_000_000;
   const buyer = keypairFromSeed("a1".repeat(32));
   const arbitrator = keypairFromSeed("b2".repeat(32));
@@ -278,25 +295,107 @@ if (FULL) {
     { decision: htlc9Res.decision, effectiveWeight: htlc9Res.reweighted?.effectiveWeight }, { decision: "pass", effectiveWeight: 0 });
 
   golden["dispute"] = {
+    status: "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
     seeds: { buyer: "a1".repeat(32), arbitrator: "b2".repeat(32) },
     now: NOW,
     decisions: {
       happy: "pass", open: "indeterminate", badRecordKey: "fail", malformedKey: "error",
       ruleSwap: "fail", wrongOutcomeKey: "fail", nonCanonicalAmount: "fail", unknownBundle: "fail", htlc9Correction: "pass",
     },
-    artifacts: "see vectors/dacs-x/ for the byte-stable dispute-record / outcome / bundle fixtures",
+    inputs: "constructed deterministically in conformance/run.ts from the seeds above (no separate fixture files); re-run `bun conformance/run.ts` to regenerate",
+  };
+}
+
+// ── §8.7 — DACS-X step 3: arbitrator transcript-disclosure (DP-1) — CANDIDATE ─
+// Realises the §8.7 hook ("DACS-X dispute MAY require selective transcript
+// disclosure under signed party agreement or arbitrator order") under steward
+// sign-off DP-1: full transcript → named arbitrator only, no presentable artifact.
+// CANDIDATE alongside the dispute area, pending the #99 cross-impl fixture.
+{
+  const NOW = 1_780_000_000_000;
+  const buyer = keypairFromSeed("a1".repeat(32));
+  const seller = keypairFromSeed("c3".repeat(32));
+  const arbitrator = keypairFromSeed("b2".repeat(32));
+  const buyerClaim = "did:demos:buyer", sellerClaim = "did:demos:seller", arbitratorClaim = "did:arbitrator:court";
+  const transcriptSep = DOMAIN_SEPARATOR_REGISTRY["dacs-3-transcript"];
+  const grantSep = dacsXSeparator("dacs-x-disclosure-grant");
+  const requirement: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "arbitrator-accreditation", verificationRequired: true }], primaryClaimSelector: "did" };
+  const agreedRule: ArbitrationRule = { requirement, arbitrators: [arbitratorClaim], policyVersion: 1 };
+  const ruleRef = sha256Hex(canonicalize(agreedRule));
+  const recUnsigned: Omit<DisputeRecord, "signature"> = {
+    dacsXVersion: "1", disputeId: "d1", initiator: buyerClaim, disputed: [{ jobId: "job-flow", bundleHash: sha256Hex("b") }],
+    contestedClaim: "divergent-bundle", requestedRemedy: "reputation-correction", arbitration: { ruleRef }, openedAt: NOW,
+  };
+  const record: DisputeRecord = { ...recUnsigned, signature: signArtifact(dacsXSeparator("dacs-x-dispute-record"), recUnsigned as unknown as Record<string, unknown>, buyer.privateKey) };
+
+  const buildTranscript = (sellerSig?: string): ChannelTranscript => {
+    const base: Omit<ChannelTranscript, "signatures"> = {
+      transcriptVersion: "1", channelId: "subnet-7", members: [buyerClaim, sellerClaim],
+      messages: [{ sequence: 1, author: buyerClaim, envelopeHash: sha256Hex("offer") }, { sequence: 2, author: sellerClaim, envelopeHash: sha256Hex("counter") }],
+      generatedAt: NOW - 5000,
+    };
+    const sign = (kp: Keypair) => signArtifact(transcriptSep, { ...base } as Record<string, unknown>, kp.privateKey, ["signatures"]);
+    return { ...base, signatures: [{ signer: buyerClaim, signature: sign(buyer) }, { signer: sellerClaim, signature: sellerSig ?? sign(seller) }] };
+  };
+  const transcript = buildTranscript();
+  const buildGrant = (authority: DisclosureAuthority, signers: [ClaimReference, Keypair][], over: Partial<DisclosureGrant> = {}): DisclosureGrant => {
+    const base: Omit<DisclosureGrant, "signatures"> = {
+      dacsXVersion: "1", disputeId: "d1", disputeRecordHash: disputeRecordHash(record),
+      transcriptHash: transcriptContentHash(transcript), recipient: arbitratorClaim, authority, grantedAt: NOW + 500, ...over,
+    };
+    const sign = (kp: Keypair) => signArtifact(grantSep, { ...base } as Record<string, unknown>, kp.privateKey, ["signatures"]);
+    return { ...base, signatures: signers.map(([signer, kp]) => ({ signer, signature: sign(kp) })) };
+  };
+  const memberKeys: Record<ClaimReference, Uint8Array> = { [buyerClaim]: buyer.publicKeyRaw, [sellerClaim]: seller.publicKeyRaw };
+  const di = (grant: DisclosureGrant, over: Partial<DisclosureInput> = {}): DisclosureInput => ({ grant, transcript, record, agreedRule, recipientPublicKeyRaw: arbitrator.publicKeyRaw, memberKeys, now: NOW + 500, ...over });
+  const decide = (input: DisclosureInput): string => { try { return verifyTranscriptDisclosure(input).ok ? "pass" : "fail"; } catch { return "error"; } };
+
+  rec("disclosure-party-agreement-pass", "disclosure", "§8.7", "all channel members co-sign → transcript disclosure to the named arbitrator authorized",
+    decide(di(buildGrant("party-agreement", [[buyerClaim, buyer], [sellerClaim, seller]]))), "pass");
+  rec("disclosure-arbitrator-order-pass", "disclosure", "§8.7", "the credentialed arbitrator orders disclosure → authorized",
+    decide(di(buildGrant("arbitrator-order", [[arbitratorClaim, arbitrator]]))), "pass");
+  rec("disclosure-wrong-recipient-fail", "disclosure", "§8.7", "DP-1 named-arbitrator-only: a recipient not in the agreed arbitrator allow-set → FAIL",
+    decide(di(buildGrant("arbitrator-order", [[arbitratorClaim, arbitrator]], { recipient: "did:rando:x" }))), "fail");
+  const rando = keypairFromSeed("d4".repeat(32));
+  const swappedRule: ArbitrationRule = { requirement, arbitrators: ["did:rando:x"], policyVersion: 2 };
+  rec("disclosure-rule-swap-fail", "disclosure", "§8.7", "DP-1 anti-swap: an agreed rule whose hash ≠ the record's pinned ruleRef → FAIL (can't swap in a rule naming an attacker's recipient)",
+    decide(di(buildGrant("arbitrator-order", [["did:rando:x", rando]], { recipient: "did:rando:x" }), { agreedRule: swappedRule, recipientPublicKeyRaw: rando.publicKeyRaw })), "fail");
+  rec("disclosure-transcript-substitution-fail", "disclosure", "§8.7", "a grant pinning a different transcript hash → FAIL (the disclosed transcript can't be swapped)",
+    decide(di(buildGrant("party-agreement", [[buyerClaim, buyer], [sellerClaim, seller]], { transcriptHash: sha256Hex("other-transcript") }))), "fail");
+  rec("disclosure-missing-consent-fail", "disclosure", "§8.7", "party-agreement missing a member's consent → FAIL (full consent required)",
+    decide(di(buildGrant("party-agreement", [[buyerClaim, buyer]]))), "fail");
+  rec("disclosure-wrong-dispute-fail", "disclosure", "§8.7", "a grant not bound to the DisputeRecord → FAIL",
+    decide(di(buildGrant("arbitrator-order", [[arbitratorClaim, arbitrator]], { disputeRecordHash: sha256Hex("nope") }))), "fail");
+  rec("disclosure-malformed-key-error", "disclosure", "§8.7", "a non-32-byte member key → ERROR, not a false-negative FAIL",
+    decide(di(buildGrant("party-agreement", [[buyerClaim, buyer], [sellerClaim, seller]]), { memberKeys: { [buyerClaim]: new Uint8Array([1, 2, 3]), [sellerClaim]: seller.publicKeyRaw } })), "error");
+  const forged = buildTranscript(buildTranscript().signatures[0]!.signature);
+  rec("disclosure-transcript-unsigned-fail", "disclosure", "§8.7", "a transcript with an unverifiable member signature → FAIL (authenticity)",
+    decide(di(buildGrant("arbitrator-order", [[arbitratorClaim, arbitrator]], { transcriptHash: transcriptContentHash(forged) }), { transcript: forged })), "fail");
+
+  golden["disclosure"] = {
+    status: "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
+    seeds: { buyer: "a1".repeat(32), seller: "c3".repeat(32), arbitrator: "b2".repeat(32), rando: "d4".repeat(32) },
+    now: NOW,
+    decisions: {
+      partyAgreement: "pass", arbitratorOrder: "pass", wrongRecipient: "fail", ruleSwap: "fail", transcriptSubstitution: "fail",
+      missingConsent: "fail", wrongDispute: "fail", malformedKey: "error", transcriptUnsigned: "fail",
+    },
+    inputs: "constructed deterministically in conformance/run.ts from the seeds above; re-run to regenerate",
   };
 }
 
 // ── report + emit ────────────────────────────────────────────────────────────
-const RESET = "\x1b[0m", GREEN = "\x1b[32m", RED = "\x1b[31m", DIM = "\x1b[2m";
+const RESET = "\x1b[0m", GREEN = "\x1b[32m", RED = "\x1b[31m", DIM = "\x1b[2m", YEL = "\x1b[33m";
 let passed = 0;
 const byArea = new Map<string, Case[]>();
 for (const c of cases) (byArea.get(c.area) ?? byArea.set(c.area, []).get(c.area)!).push(c);
+const goldenN = cases.filter((c) => statusOf(c.area) === "golden").length;
+const candidateN = cases.length - goldenN;
 
-console.log(`\nDACS v0.1 conformance — ${cases.length} vectors (proposed / non-normative)\n`);
+console.log(`\nDACS v0.1 conformance — ${goldenN} golden + ${candidateN} candidate (proposed / non-normative)\n`);
 for (const [area, list] of byArea) {
-  console.log(`  ${area}`);
+  const tag = statusOf(area) === "candidate" ? ` ${YEL}[candidate · pending #99]${RESET}` : "";
+  console.log(`  ${area}${tag}`);
   for (const c of list) {
     const ok = eq(c.got, c.want);
     if (ok) passed++;
@@ -306,7 +405,7 @@ for (const [area, list] of byArea) {
   }
 }
 const allPass = passed === cases.length;
-console.log(`\n  ${allPass ? GREEN : RED}${passed}/${cases.length} passed${RESET}\n`);
+console.log(`\n  ${allPass ? GREEN : RED}${passed}/${cases.length} passed${RESET} ${DIM}(${goldenN} golden · ${candidateN} candidate)${RESET}\n`);
 
 if (EMIT) {
   const vectorsDir = join(HERE, "vectors");
@@ -314,10 +413,12 @@ if (EMIT) {
   const manifest = {
     dacsVersion: "0.1",
     generator: "github.com/mj-deving/dacs-verify",
-    note: FULL
-      ? "DACS v0.1 conformance vectors incl. the §11.2.1 dispute area (held from the published set pending interface-issue #99). Proposed / non-normative."
-      : "Golden conformance vectors for the deterministic DACS v0.1 primitive surface (§7.1 canonicalization, §14.4 decimals, §7.7 signing, §6.3 identity). Proposed / non-normative. Run: bun conformance/run.ts",
-    cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, want: c.want })),
+    note: "Proposed / non-normative. Run: bun conformance/run.ts",
+    surfaces: {
+      golden: `${goldenN} vectors — byte-stable AND reference-verifier-accepted; no two conformant impls can disagree (§7.1 canonicalization, §14.4 decimals, §7.7 signing, §6.3 identity).`,
+      candidate: `${candidateN} vectors — single-impl (§11.2.1 dispute + §8.7 disclosure). PATH-OS's unmodified DACS-5 verify-bundle returns §7.5.1 indeterminate on the minimal dispute fixtures (it consumes a full §10.4 AttestationBundle); cross-impl agreement is pending the shared fixture in interface-issue #99 (DACS-VERIFY-0004).`,
+    },
+    cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), want: c.want })),
   };
   writeFileSync(join(HERE, "MANIFEST.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(vectorsDir, "golden.json"), JSON.stringify(golden, null, 2) + "\n");

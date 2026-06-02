@@ -13,5 +13,47 @@
   "addressing": {
     "logical": "dacs1:lei:984500ABCDEF12345678:fx-rfq-eur-usd:v1",
     "native": "stor-ac8d9a32ced4223d0022fba37beb05754c7c695e1599175178a543ff72302f96"
+  },
+  "dispute": {
+    "status": "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
+    "seeds": {
+      "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "arbitrator": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    },
+    "now": 1780000000000,
+    "decisions": {
+      "happy": "pass",
+      "open": "indeterminate",
+      "badRecordKey": "fail",
+      "malformedKey": "error",
+      "ruleSwap": "fail",
+      "wrongOutcomeKey": "fail",
+      "nonCanonicalAmount": "fail",
+      "unknownBundle": "fail",
+      "htlc9Correction": "pass"
+    },
+    "inputs": "constructed deterministically in conformance/run.ts from the seeds above (no separate fixture files); re-run `bun conformance/run.ts` to regenerate"
+  },
+  "disclosure": {
+    "status": "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
+    "seeds": {
+      "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "seller": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "arbitrator": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "rando": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+    },
+    "now": 1780000000000,
+    "decisions": {
+      "partyAgreement": "pass",
+      "arbitratorOrder": "pass",
+      "wrongRecipient": "fail",
+      "ruleSwap": "fail",
+      "transcriptSubstitution": "fail",
+      "missingConsent": "fail",
+      "wrongDispute": "fail",
+      "malformedKey": "error",
+      "transcriptUnsigned": "fail"
+    },
+    "inputs": "constructed deterministically in conformance/run.ts from the seeds above; re-run to regenerate"
   }
 }

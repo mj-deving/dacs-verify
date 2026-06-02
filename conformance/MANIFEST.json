@@ -1,13 +1,18 @@
 {
   "dacsVersion": "0.1",
   "generator": "github.com/mj-deving/dacs-verify",
-  "note": "Golden conformance vectors for the deterministic DACS v0.1 primitive surface (§7.1 canonicalization, §14.4 decimals, §7.7 signing, §6.3 identity). Proposed / non-normative. Run: bun conformance/run.ts",
+  "note": "Proposed / non-normative. Run: bun conformance/run.ts",
+  "surfaces": {
+    "golden": "24 vectors — byte-stable AND reference-verifier-accepted; no two conformant impls can disagree (§7.1 canonicalization, §14.4 decimals, §7.7 signing, §6.3 identity).",
+    "candidate": "18 vectors — single-impl (§11.2.1 dispute + §8.7 disclosure). PATH-OS's unmodified DACS-5 verify-bundle returns §7.5.1 indeterminate on the minimal dispute fixtures (it consumes a full §10.4 AttestationBundle); cross-impl agreement is pending the shared fixture in interface-issue #99 (DACS-VERIFY-0004)."
+  },
   "cases": [
     {
       "id": "canon-key-order",
       "area": "canonicalize",
       "spec": "§7.1",
       "summary": "object members ordered by UTF-16 code unit of key",
+      "status": "golden",
       "want": "{\"A\":3,\"a\":2,\"b\":1}"
     },
     {
@@ -15,6 +20,7 @@
       "area": "canonicalize",
       "spec": "§7.1",
       "summary": "nested objects sorted; array order preserved",
+      "status": "golden",
       "want": "{\"a\":{\"x\":2,\"y\":1},\"z\":[3,1,2]}"
     },
     {
@@ -22,6 +28,7 @@
       "area": "canonicalize",
       "spec": "§7.1",
       "summary": "only JCS-required escapes are applied",
+      "status": "golden",
       "want": "\"a\\\"b\\\\c\\n\\t\""
     },
     {
@@ -29,6 +36,7 @@
       "area": "canonicalize",
       "spec": "§7.1",
       "summary": "forward slash and non-ASCII are not escaped",
+      "status": "golden",
       "want": "\"a/bé\""
     },
     {
@@ -36,6 +44,7 @@
       "area": "canonicalize",
       "spec": "§7.1",
       "summary": "safe integers serialise as plain decimals",
+      "status": "golden",
       "want": "9007199254740991"
     },
     {
@@ -43,6 +52,7 @@
       "area": "canonicalize",
       "spec": "§7.1",
       "summary": "non-integer numbers are rejected",
+      "status": "golden",
       "want": "throws"
     },
     {
@@ -50,6 +60,7 @@
       "area": "canonicalize",
       "spec": "§7.2",
       "summary": "the signed scope excludes the signature field",
+      "status": "golden",
       "want": "{\"a\":1}"
     },
     {
@@ -57,6 +68,7 @@
       "area": "decimal",
       "spec": "§14.4",
       "summary": "1.50 / 01.5 / 1.500 all canonicalise to 1.5",
+      "status": "golden",
       "want": [
         "1.5",
         "1.5",
@@ -68,6 +80,7 @@
       "area": "decimal",
       "spec": "§14.4",
       "summary": "0.0 → 0 ; .5 → 0.5 ; 0.50 → 0.5",
+      "status": "golden",
       "want": [
         "0",
         "0.5",
@@ -79,6 +92,7 @@
       "area": "decimal",
       "spec": "§14.4",
       "summary": "exponent / sign-plus / non-numeric are rejected",
+      "status": "golden",
       "want": [
         "throws",
         "throws",
@@ -90,6 +104,7 @@
       "area": "decimal",
       "spec": "§14.4",
       "summary": "economically-equal amounts share a content hash; raw strings do not",
+      "status": "golden",
       "want": {
         "canonicalEqual": true,
         "rawDiffers": true
@@ -100,6 +115,7 @@
       "area": "decimal",
       "spec": "§9.3",
       "summary": "amount MUST be > 0",
+      "status": "golden",
       "want": "throws"
     },
     {
@@ -107,6 +123,7 @@
       "area": "signing",
       "spec": "§7.7",
       "summary": "a dacs-1-listing signature verifies under its own separator",
+      "status": "golden",
       "want": {
         "ok": true,
         "separator": "dacs-listing:v1:"
@@ -117,6 +134,7 @@
       "area": "signing",
       "spec": "§7.7",
       "summary": "mutating the signed scope breaks verification",
+      "status": "golden",
       "want": false
     },
     {
@@ -124,6 +142,7 @@
       "area": "signing",
       "spec": "§7.7",
       "summary": "SIG-2: a listing signature does not verify as a bundle signature",
+      "status": "golden",
       "want": false
     },
     {
@@ -131,6 +150,7 @@
       "area": "signing",
       "spec": "§7.7",
       "summary": "the domain-separator registry is the closed set of 16",
+      "status": "golden",
       "want": 16
     },
     {
@@ -138,6 +158,7 @@
       "area": "signing",
       "spec": "§7.7",
       "summary": "SIG-4: DACS-X separators are dacs-x-* and disjoint from the §7.7 registry",
+      "status": "golden",
       "want": true
     },
     {
@@ -145,6 +166,7 @@
       "area": "dacs1",
       "spec": "§6.3.3",
       "summary": "OBSERVATION DACS-VERIFY-0001 (adjacent issue #42): a cci-lei: claim does NOT satisfy a bare lei requirement",
+      "status": "golden",
       "want": false
     },
     {
@@ -152,6 +174,7 @@
       "area": "dacs1",
       "spec": "§6.3.1",
       "summary": "0001 is naming-only: cci-lei: satisfies a cci-lei requirement",
+      "status": "golden",
       "want": true
     },
     {
@@ -159,6 +182,7 @@
       "area": "dacs1",
       "spec": "§6.3.3",
       "summary": "step 3b: an unverified presentedBy claim is rejected even if another verified claim satisfies the requirement",
+      "status": "golden",
       "want": false
     },
     {
@@ -166,6 +190,7 @@
       "area": "dacs1",
       "spec": "§6.3.4",
       "summary": "an intake-only listing (no pay phase) may omit acceptedRails",
+      "status": "golden",
       "want": true
     },
     {
@@ -173,6 +198,7 @@
       "area": "dacs1",
       "spec": "§6.3.4",
       "summary": "step 8: a pay-* phase without acceptedRails fails",
+      "status": "golden",
       "want": {
         "ok": false,
         "failedAt": "accepted-rails-conditional"
@@ -183,6 +209,7 @@
       "area": "dacs1",
       "spec": "§6.3.4",
       "summary": "an expired validity window is rejected",
+      "status": "golden",
       "want": {
         "ok": false,
         "failedAt": "validity-window"
@@ -193,10 +220,162 @@
       "area": "dacs1",
       "spec": "§6.3.4",
       "summary": "OBSERVATION DACS-VERIFY-0003: spec rule yields stor-<64hex> (Demos uses stor-<40hex>; verify on substrate before relying)",
+      "status": "golden",
       "want": {
         "shape64": true,
         "notLen40": true
       }
+    },
+    {
+      "id": "dispute-happy-pass",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "consistent dispute → PASS, disputed contribution reweighted to 0 (prior preserved)",
+      "status": "candidate",
+      "want": {
+        "decision": "pass",
+        "effectiveWeight": 0,
+        "priorWeight": 1
+      }
+    },
+    {
+      "id": "dispute-open-indeterminate",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "an open dispute with no outcome yet → INDETERMINATE",
+      "status": "candidate",
+      "want": "indeterminate"
+    },
+    {
+      "id": "dispute-bad-record-key-fail",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "a dispute-record verified against the wrong key → FAIL",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "dispute-malformed-key-error",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "an unparseable (non-32-byte) key → ERROR, not a false-negative FAIL",
+      "status": "candidate",
+      "want": "error"
+    },
+    {
+      "id": "dispute-rule-swap-fail",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "a post-hoc arbitration-rule swap (rule-ref mismatch) → FAIL",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "dispute-wrong-outcome-key-fail",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "an outcome signed by the wrong key → FAIL",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "dispute-noncanonical-amount-fail",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "an outcome with a non-CD-1 refund amount → FAIL",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "dispute-unknown-bundle-fail",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "a dispute pinned to an unknown bundle → FAIL",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "dispute-htlc9-correction-pass",
+      "area": "dispute",
+      "spec": "§11.2.1",
+      "summary": "HTLC-9 asymmetric settlement closes via a correction amendment → PASS, contribution voided (never a refund)",
+      "status": "candidate",
+      "want": {
+        "decision": "pass",
+        "effectiveWeight": 0
+      }
+    },
+    {
+      "id": "disclosure-party-agreement-pass",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "all channel members co-sign → transcript disclosure to the named arbitrator authorized",
+      "status": "candidate",
+      "want": "pass"
+    },
+    {
+      "id": "disclosure-arbitrator-order-pass",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "the credentialed arbitrator orders disclosure → authorized",
+      "status": "candidate",
+      "want": "pass"
+    },
+    {
+      "id": "disclosure-wrong-recipient-fail",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "DP-1 named-arbitrator-only: a recipient not in the agreed arbitrator allow-set → FAIL",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "disclosure-rule-swap-fail",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "DP-1 anti-swap: an agreed rule whose hash ≠ the record's pinned ruleRef → FAIL (can't swap in a rule naming an attacker's recipient)",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "disclosure-transcript-substitution-fail",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "a grant pinning a different transcript hash → FAIL (the disclosed transcript can't be swapped)",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "disclosure-missing-consent-fail",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "party-agreement missing a member's consent → FAIL (full consent required)",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "disclosure-wrong-dispute-fail",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "a grant not bound to the DisputeRecord → FAIL",
+      "status": "candidate",
+      "want": "fail"
+    },
+    {
+      "id": "disclosure-malformed-key-error",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "a non-32-byte member key → ERROR, not a false-negative FAIL",
+      "status": "candidate",
+      "want": "error"
+    },
+    {
+      "id": "disclosure-transcript-unsigned-fail",
+      "area": "disclosure",
+      "spec": "§8.7",
+      "summary": "a transcript with an unverifiable member signature → FAIL (authenticity)",
+      "status": "candidate",
+      "want": "fail"
     }
   ]
 }

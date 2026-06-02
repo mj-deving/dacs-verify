@@ -13,6 +13,10 @@ import { isRegisteredSeparator } from "../signing.ts";
 export const DACS_X_SEPARATORS = Object.freeze({
   "dacs-x-dispute-record": "dacs-x-dispute-record:v1:",
   "dacs-x-dispute-outcome": "dacs-x-dispute-outcome:v1:",
+  // step 3 — §8.7 arbitrator-disclosure authorization (DP-1). The disclosed
+  // transcript itself is a NATIVE §8.7 artifact (registered "dacs-transcript:v1:");
+  // only the grant that authorizes its disclosure is a dacs-x extension.
+  "dacs-x-disclosure-grant": "dacs-x-disclosure-grant:v1:",
 } as const);
 
 export type DacsXArtifactKind = keyof typeof DACS_X_SEPARATORS;
