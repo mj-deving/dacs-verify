@@ -16,7 +16,7 @@ DACS-X is unspecified in v0.1. Two impls are now building against the same idea:
 This contract pins exactly three things and nothing more:
 
 1. The **`DisputeOutcome`** artifact shape + how it's hashed and signed (§1–§3).
-2. The **§10.10 supersession** semantics — how an outcome reweights the disputed contribution (§4).
+2. The **§11.2.1 supersession** semantics — how an outcome reweights the disputed contribution (§4).
 3. The **HTLC-9 `correction` emission** rule — the settlement seam (§5).
 
 Everything is **composition of DACS v0.1 primitives already in the spec** (§7.2 content hash, §7.7 domain-separated signing, DACS-1/2 `matchRequirement`, CD-1 decimal, §9.7.1 SettlementAmendment). No new cryptography, no new separators beyond the SIG-4 extension namespace the spec itself prescribes.
@@ -89,7 +89,7 @@ JCS canonicalization is byte-exact (key-sort + RFC 8785 escaping); §7.1 numeric
 
 ---
 
-## 4. §10.10 supersession — reweight semantics
+## 4. §11.2.1 supersession — reweight semantics
 
 A `DisputeOutcome` supersedes/annotates the disputed session's DACS-5 §10.5 reputation contribution. The reweight is **NON-DESTRUCTIVE**: the prior weight is preserved (audit trail — a dispute record must show *why* a weight changed), an effective weight is derived, and the outcome's content hash rides as provenance.
 
@@ -140,7 +140,7 @@ v0.1 pins the **outputs and the one transition**: the artifact shape (§1–§3)
 
 - **claim/preimage→key binding** — which revealed preimage binds to which HTLC/key. `dest-revealed-source-unclaimed` is a *derived* predicate over this resolution; the reference impl treats claim→key resolution as substrate-dependent and outside the read-only verifier. If two impls resolve the binding differently, one sees the HTLC-9 trigger and emits `correction`, the other classifies a different HTLC-9 substate and emits a plain `failure` — and `never-refund` is irreversible.
 - **§9.7.1 three-way branch predicate** — the exact, shared predicate selecting `correction` vs the other §9.7.1 amendment outcomes from the settlement evidence.
-- **`decidedAt` monotonicity + multi-outcome supersession total-order** — when an outcome is revised, which one settlement honors (a sub-component of the §10.10 supersession ordering, §4).
+- **`decidedAt` monotonicity + multi-outcome supersession total-order** — when an outcome is revised, which one settlement honors (a sub-component of the §11.2.1 supersession ordering, §4).
 
 Crucially these fail **silently**: both impls can pass v0.1 conformance and still disagree, unlike a shape or JCS mismatch which fails **loud** (verify rejects). **v0.2 headline = pin the claim→key / preimage-binding predicate and the §9.7.1 branch predicate first; the supersession total-order (incl. `decidedAt`) second.** Until then, read v0.1 as *outputs pinned, resolution predicates deferred* — NOT "the seam is fully deterministic across impls."
 
@@ -153,8 +153,8 @@ Crucially these fail **silently**: both impls can pass v0.1 conformance and stil
 | `DisputeRecord` (dispute-open) + signature | **producer** (dispute layer) | `dacs-x-dispute-record:v1:` |
 | Arbitrator credentialing (DACS-1/2 `matchRequirement` + content-hashed `ruleRef`) | **producer**, internal | — (not on this interface) |
 | `DisputeOutcome` (signed) | **producer** | `dacs-x-dispute-outcome:v1:` |
-| §10.10 reputation reweight | **producer** emits, **consumer** may re-derive | `ReputationReweight` |
-| Validate the disputed `AttestationBundle` the `DisputeRecord` pins | **consumer** | `verify-bundle` (§10.4.2/§10.4.3 two-sided walk) |
+| §11.2.1 reputation reweight | **producer** emits, **consumer** may re-derive | `ReputationReweight` |
+| Validate the disputed `AttestationBundle` the `DisputeRecord` pins | **consumer** | `verify-bundle` (§10.4.1 co-signed two-sided walk; §10.4.3 fetch-both addressing) |
 | Validate HTLC-9 evidence + close §9.7.1 `correction` | **consumer** | `settlement-evidence-verifier` |
 | `DisputeOutcome` reference verifier | **consumer** | (forthcoming, their side) |
 
@@ -184,4 +184,4 @@ The reference impl emits **illustrative, non-normative** fixtures, byte-stable a
 
 ## Changelog
 
-- v0.1 (2026-06-02) — initial contract. Pins the `DisputeOutcome` 7-field shape (§1), the closed 4-kind `RemedyDecision` union (§2), §7.2/§7.7-SIG-4 hashing & signing with the two `dacs-x-*` separators (§3), the non-destructive §10.10 reweight + remedy→effectiveWeight mapping (§4), and the HTLC-9 `dest-revealed-source-unclaimed` → §9.7.1 `correction`/`failure`/never-refund emission rule (§5). All shapes mirror `mj-deving/dacs-verify` `src/dacsx/` as shipped.
+- v0.1 (2026-06-02) — initial contract. Pins the `DisputeOutcome` 7-field shape (§1), the closed 4-kind `RemedyDecision` union (§2), §7.2/§7.7-SIG-4 hashing & signing with the two `dacs-x-*` separators (§3), the non-destructive §11.2.1 reweight + remedy→effectiveWeight mapping (§4), and the HTLC-9 `dest-revealed-source-unclaimed` → §9.7.1 `correction`/`failure`/never-refund emission rule (§5). All shapes mirror `mj-deving/dacs-verify` `src/dacsx/` as shipped.
