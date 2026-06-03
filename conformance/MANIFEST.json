@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "116 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.",
+    "golden": "116 vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [

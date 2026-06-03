@@ -1001,7 +1001,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
