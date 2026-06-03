@@ -791,6 +791,13 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     anchoredBuyer,
     VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT,
   );
+  // §10.5.1 (L3217): the finalisedAt window is closed-interval INCLUSIVE on both ends — a bundle whose finalisedAt
+  // equals windowStart==windowEnd (the completed fixture at START+1000) is scoped. Pins the window-edge off-by-one.
+  const boundaryInclusive = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    anchoredBuyer,
+    VERIFY_REPUTATION_WINDOW_START + 1_000, VERIFY_REPUTATION_WINDOW_START + 1_000, VERIFY_REPUTATION_COMPUTED_AT,
+  );
 
   rec("verify-address-buyer", "verify", "§10.4.2", "buyer bundle address is stor-{sha256(jobId + \"-bundle-buyer\")}",
     bundleAddress("job-1", "buyer"), "stor-c7bc689288bad9d6f448ca14c9aa949a4c9574a317f4a591c7f9486f4f7a6b8f");
@@ -903,6 +910,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     misanchoredVerdict, "absent");
   rec("verify-one-sided-unverified-signature-absent", "verify", "§10.4.2/§10.11", "a present side whose role signature does NOT verify (wrong/forged key) is not classified present → absent (no abort provenance from unverifiable storage)",
     unverifiedSigVerdict, "absent");
+  rec("verify-reputation-window-boundary-inclusive", "verify", "§10.5.1", "the finalisedAt window is closed-interval inclusive on BOTH ends — a bundle at exactly windowStart==windowEnd is scoped",
+    { bundleCount: boundaryInclusive.bundleCount, completionRate: boundaryInclusive.metrics.completionRate }, { bundleCount: 1, completionRate: 1 });
 
   golden["verify"] = {
     status: "golden — reference-verifier-accepted + byte-stable",
@@ -938,6 +947,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       sellerAbortProvenanceDisputeRate: abortProvenance.metrics.counterpartyDisputeRate,
       misanchoredRoleSignatureRejected: misanchoredVerdict,
       unverifiedSignatureRejected: unverifiedSigVerdict,
+      windowBoundaryInclusiveCount: boundaryInclusive.bundleCount,
     },
     seeds: verifySession.seeds,
     publicKeys: verifySession.publicKeys,

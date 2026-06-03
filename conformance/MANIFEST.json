@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "107 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.",
+    "golden": "108 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -1074,6 +1074,18 @@
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": "absent"
+    },
+    {
+      "id": "verify-reputation-window-boundary-inclusive",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "the finalisedAt window is closed-interval inclusive on BOTH ends — a bundle at exactly windowStart==windowEnd is scoped",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 1,
+        "completionRate": 1
+      }
     }
   ]
 }

@@ -168,6 +168,13 @@ test("consumeBundles rejects a bundle whose role-party did not sign it (role-sig
   expect(consumeBundles(VERIFY_MISANCHORED_JOB_ID, fixtures.fetchMisanchored, fixtures.resolveKey, VERIFY_EXPECTED).verdict).toBe("absent");
 });
 
+test("deriveReputation window is closed-interval inclusive on both ends", () => {
+  // §10.5.1 (L3217): a bundle at exactly windowStart==windowEnd is scoped (pins the window-edge off-by-one).
+  const at = deriveReputation(VERIFY_BUYER_CLAIM, anchoredBuyer, VERIFY_REPUTATION_WINDOW_START + 1000, VERIFY_REPUTATION_WINDOW_START + 1000, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(at.bundleCount).toBe(1);
+  expect(at.metrics.completionRate).toBe(1);
+});
+
 test("consumeBundles rejects a present side whose role signature does not verify", () => {
   // §10.4.2/§10.11: a one-sided buyer bundle whose buyer claim resolves to the wrong key does not verify → not present.
   const sellerKey = new Uint8Array(Buffer.from(fixtures.publicKeys[VERIFY_SELLER_CLAIM]!, "base64url"));

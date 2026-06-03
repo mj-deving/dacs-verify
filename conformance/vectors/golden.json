@@ -226,7 +226,8 @@
       "sellerAbortProvenanceBundleCount": 0,
       "sellerAbortProvenanceDisputeRate": null,
       "misanchoredRoleSignatureRejected": "absent",
-      "unverifiedSignatureRejected": "absent"
+      "unverifiedSignatureRejected": "absent",
+      "windowBoundaryInclusiveCount": 1
     },
     "seeds": {
       "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",

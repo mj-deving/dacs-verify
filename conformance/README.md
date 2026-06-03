@@ -6,17 +6,17 @@ An independent, third-party set of executable conformance vectors for DACS v0.1,
 
 Surface labels travel with each vector:
 
-- **GOLDEN (107)** — byte-stable and accepted by this reference verifier: 24 primitive checks, 4 checks in one §10.4 bundle area, 18 dispute/disclosure checks pinned to DACS-VERIFY-0004 bundle refs, 30 §14.4 settlement-evidence checks, and 31 §14.5 verify checks.
+- **GOLDEN (108)** — byte-stable and accepted by this reference verifier: 24 primitive checks, 4 checks in one §10.4 bundle area, 18 dispute/disclosure checks pinned to DACS-VERIFY-0004 bundle refs, 30 §14.4 settlement-evidence checks, and 32 §14.5 verify checks.
 - **CANDIDATE (0)** — no current candidate vectors.
 
 ## Why
 
-The spec's §14 conformance chapter defines conformant behaviour but ships no second independent verifier and no published vectors. This is one: 24 golden primitive vectors, DACS-VERIFY-0004 §10.4 AttestationBundle fixtures, 18 golden vectors exercising the proposed DACS-X dispute + disclosure flow against pinned bundle refs, 30 golden §14.4 SettlementEvidence vectors (PC-1..6, RD-5 rail coherence, CD-1 amounts), and 31 golden §14.5 Verify vectors (two-sided lookup, §10.4.3(a-d) consumption, ST-1..7 transitions, reputation derivation).
+The spec's §14 conformance chapter defines conformant behaviour but ships no second independent verifier and no published vectors. This is one: 24 golden primitive vectors, DACS-VERIFY-0004 §10.4 AttestationBundle fixtures, 18 golden vectors exercising the proposed DACS-X dispute + disclosure flow against pinned bundle refs, 30 golden §14.4 SettlementEvidence vectors (PC-1..6, RD-5 rail coherence, CD-1 amounts), and 32 golden §14.5 Verify vectors (two-sided lookup, §10.4.3(a-d) consumption, ST-1..7 transitions, reputation derivation).
 
 ## Run
 
 ```sh
-bun conformance/run.ts          # run all 107 vectors → exit non-zero on any failure
+bun conformance/run.ts          # run all 108 vectors → exit non-zero on any failure
 bun conformance/run.ts --emit   # regenerate MANIFEST.json + vectors/golden.json
 ```
 
@@ -32,7 +32,7 @@ Deterministic by construction: every key and signature is derived from a fixed p
 - `dispute`: 9 golden vectors, §11.2.1 DACS-X dispute flow with the 4-value decision (`pass`/`fail`/`indeterminate`/`error`).
 - `disclosure`: 9 golden vectors, §8.7 DACS-X arbitrator transcript-disclosure (step 3, DP-1).
 - `settlement`: 30 golden vectors, §14.4 SettlementEvidence verification — PC-1..6 (anchor, attestationRef→evidence hash, outcome classification, currency-resolution, settlementFinality), RD-5 railType↔asset/network coherence, §9.5.1/PIPE-5 amount==agreement.terms.price, CD-1/§9.3 amount canonicalisation, and the `dacs-4-evidence` signature.
-- `verify`: 31 golden vectors, §14.5 DACS-5 Verify — two-sided lookup `stor-{sha256(jobId+"-bundle-"+role)}` (§10.4.2) with jobId binding, §10.4.3(a-d) consumption (one-sided→aborted-by-self per §10.11, unified, divergent — "divergent" is a **consumer verdict, NOT an `outcome` enum value**), ST-1..7 transition table + state→outcome mapping (§10.3.1), and reputation derivation (§10.5.1 — `party_fault_denom` excludes `failed-substrate`, null≠zero, anchorer-relative scoping, session dedup).
+- `verify`: 32 golden vectors, §14.5 DACS-5 Verify — two-sided lookup `stor-{sha256(jobId+"-bundle-"+role)}` (§10.4.2) with jobId binding, §10.4.3(a-d) consumption (one-sided→aborted-by-self per §10.11, unified, divergent — "divergent" is a **consumer verdict, NOT an `outcome` enum value**), ST-1..7 transition table + state→outcome mapping (§10.3.1), and reputation derivation (§10.5.1 — `party_fault_denom` excludes `failed-substrate`, null≠zero, anchorer-relative scoping, session dedup).
 
 ## §8.7 arbitrator-disclosure (step 3)
 

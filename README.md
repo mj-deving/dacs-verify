@@ -39,7 +39,7 @@ The load-bearing design point: **arbitrator legitimacy binds at *agreement* time
 
 ```bash
 bun test                                # foundation + DACS-5 bundle + DACS-X dispute + HTLC-9 seam
-bun conformance/run.ts                  # 107 byte-stable conformance vectors (24 primitives + 4 bundle + 9 dispute + 9 disclosure + 30 §14.4 settlement + 31 §14.5 verify)
+bun conformance/run.ts                  # 108 byte-stable conformance vectors (24 primitives + 4 bundle + 9 dispute + 9 disclosure + 30 §14.4 settlement + 32 §14.5 verify)
 bun examples/attestation-bundle-0004.ts # emit the full §10.4 AttestationBundle fixture (DACS-VERIFY-0004)
 bun examples/dispute-scenario.ts        # §10.4.3 divergent-bundle dispute → arbitrated → reputation reweighted
 bun examples/htlc9-dispute-scenario.ts  # the HTLC-9 settlement seam → correction amendment (not a refund)
