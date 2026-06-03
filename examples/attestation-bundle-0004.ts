@@ -73,6 +73,7 @@ export function buildAttestationBundle0004(): {
     bundleVersion: "1",
     jobId: ATTESTATION_BUNDLE_0004_JOB_ID,
     outcome: "completed",
+    anchoredByRole: "buyer",
     listingRef,
     agreementRef,
     parties: [
@@ -186,6 +187,7 @@ export function buildAttestationBundle0004Seller(): {
     bundleVersion: "1",
     jobId: ATTESTATION_BUNDLE_0004_JOB_ID,
     outcome: "failed-counterparty",
+    anchoredByRole: "seller",
     listingRef,
     agreementRef,
     parties: [
@@ -305,6 +307,7 @@ export function buildAttestationBundleHtlc9(): {
     bundleVersion: "1",
     jobId: ATTESTATION_BUNDLE_HTLC9_JOB_ID,
     outcome: "failed-substrate",
+    anchoredByRole: "buyer",
     listingRef,
     agreementRef,
     parties: [

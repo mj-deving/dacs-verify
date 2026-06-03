@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "108 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.",
+    "golden": "116 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -367,18 +367,6 @@
       "status": "golden",
       "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
-    },
-    {
-      "id": "dispute-htlc9-correction-pass",
-      "area": "dispute",
-      "spec": "§11.2.1",
-      "summary": "HTLC-9 asymmetric settlement closes via a correction amendment → PASS, contribution voided (never a refund)",
-      "status": "golden",
-      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
-      "want": {
-        "decision": "pass",
-        "effectiveWeight": 0
-      }
     },
     {
       "id": "disclosure-party-agreement-pass",
@@ -824,7 +812,7 @@
         "verdict": "one-sided",
         "buyerDecision": "pass",
         "buyerOutcome": "aborted-by-other",
-        "buyerHash": "7495699f164954ac6d287e3ff48d0a76d796fbc014cfd8137d99d2eb5be6a818",
+        "buyerHash": "ba7782e37f859645b11a4c432e5ca045d2426d4daf40d726c815f1f49098cb9c",
         "abortedBySelfRole": "seller",
         "abortedByOtherRole": "buyer"
       }
@@ -906,6 +894,39 @@
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": false
+    },
+    {
+      "id": "verify-st-settle-asymmetric-legal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-8",
+      "summary": "settle-pending → settle-asymmetric (HTLC-9 dest-revealed-source-unclaimed open state) is legal",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "verify-st-asymmetric-resolve-legal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-8",
+      "summary": "settle-asymmetric resolves forward: → settle-completed (htlc-claim in window) or → settle-failed (window expiry)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        true,
+        true
+      ]
+    },
+    {
+      "id": "verify-st-asymmetric-nonterminal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-6/ST-8",
+      "summary": "settle-asymmetric is non-terminal: no direct → finalised, and no bundle outcome until it resolves",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        false,
+        null
+      ]
     },
     {
       "id": "verify-outcome-finalised",
@@ -1037,24 +1058,106 @@
       "id": "verify-reputation-no-double-count",
       "area": "verify",
       "spec": "§10.5.1",
-      "summary": "both two-sided copies of one unified session, scored for buyer → counted once",
+      "summary": "two-sided reconciliation: victim scored over BOTH copies of one abort → self_copy wins → exactly one aborted-by-other, counted once (no double-count)",
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": {
         "bundleCount": 1,
-        "bundleRefs": 1
+        "bundleRefs": 1,
+        "completionRate": 0,
+        "counterpartyDisputeRate": 1
       }
     },
     {
-      "id": "verify-reputation-abort-provenance",
+      "id": "verify-reputation-reconcile-withdrawer",
       "area": "verify",
-      "spec": "§10.4.3/§10.11",
-      "summary": "buyer-anchored bundles scored for the SELLER do not fault the seller (abort outcome is anchorer-relative)",
+      "spec": "§10.5.1/§10.11",
+      "summary": "the WITHDRAWER scored over both copies → its own aborted-by-self self_copy → the aborter takes the hit (no counterparty fault)",
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": {
-        "bundleCount": 0,
-        "counterpartyDisputeRate": null
+        "bundleCount": 1,
+        "completionRate": 0,
+        "counterpartyDisputeRate": 0
+      }
+    },
+    {
+      "id": "verify-reputation-perspective-flip",
+      "area": "verify",
+      "spec": "§10.5.1/§10.11",
+      "summary": "withdrawer scored over ONLY the victim's counterparty-anchored copy → perspective_flip(aborted-by-other)=aborted-by-self → withdrawer still takes the hit",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 1,
+        "completionRate": 0,
+        "counterpartyDisputeRate": 0
+      }
+    },
+    {
+      "id": "verify-reputation-seller-perspective-flip",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "R4-B fix: a party scored over only counterparty-anchored bundles IS scored via perspective_flip, NOT excluded (pre-R4-B anchoredBy-only narrowing was the defect)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 5,
+        "completionRate": 0.25,
+        "counterpartyDisputeRate": 0.25
+      }
+    },
+    {
+      "id": "verify-reputation-rating-dedup",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "ratings via resolver: (rater,jobId,targetRole) de-dup last-writer-wins by ratedAt (5 over 3) + no self-rating → averageBuyerRating 5",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "averageBuyerRating": 5,
+        "averageSellerRating": null
+      }
+    },
+    {
+      "id": "verify-reputation-volume-grouped",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "observedTransactionalVolume sums agreement.terms.price by currency over reconciled bundles whose agreementRef resolves (5 × 5 usdc = 25)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        {
+          "amount": "25",
+          "currency": "usdc"
+        }
+      ]
+    },
+    {
+      "id": "verify-reputation-relabel-attack-defeated",
+      "area": "verify",
+      "spec": "§10.5.1/§10.4.2",
+      "summary": "role_of_party is the externally-known binding, not self-declared `parties`: a buyer bundle that relabels its own claim still reads aborted-by-self literally (NOT flipped to a counterparty fault)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 1,
+        "counterpartyDisputeRate": 0,
+        "completionRate": 0
+      }
+    },
+    {
+      "id": "verify-reputation-mixed-role-window",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "per-job role binding: a party that is buyer in one session and seller in another reads BOTH self-aborts literally — no spurious counterparty fault from a derivation-wide role; the off-role copy is a real signed seller-anchored bundle that verifies (honest fixture, not a mutated copy)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 2,
+        "counterpartyDisputeRate": 0,
+        "completionRate": 0,
+        "mixedRoleFixtureVerifies": "pass"
       }
     },
     {

@@ -2,6 +2,7 @@
   "bundleVersion": "1",
   "jobId": "DACS-VERIFY-L3-ONE-SIDED",
   "outcome": "aborted-by-other",
+  "anchoredByRole": "buyer",
   "listingRef": {
     "listingId": "listing-dacs-verify-l3-one-sided",
     "version": 1,
@@ -52,7 +53,7 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "lDUmqFIxoG-2cJiNw187BoeF-iF-GLhruqYjm_2hIIRTeSctouDPqJY1YesXLPgCS7W21ncRoHq4VMV7Hwl_CQ"
+      "value": "pFYNHMjQ777OPXYsVKAjagTGL325NaEdRdlFqwgFHgKa_Ns9RXrKbO7ijRDOAZFpK7fAtY9vUKYKvD5M8Yn4Ag"
     }
   ]
 }

@@ -9,6 +9,7 @@ import {
   isLegalTransition,
   stateToOutcome,
   twoSidedLookup,
+  verifyBundle,
 } from "../src/dacs5/index.ts";
 import {
   VERIFY_BUYER_CLAIM,
@@ -16,6 +17,7 @@ import {
   VERIFY_DIVERGENT_JOB_ID,
   VERIFY_ONE_SIDED_JOB_ID,
   VERIFY_MISANCHORED_JOB_ID,
+  VERIFY_MIXEDROLE_JOB_ID,
   VERIFY_REPUTATION_COMPUTED_AT,
   VERIFY_REPUTATION_WINDOW_END,
   VERIFY_REPUTATION_WINDOW_START,
@@ -24,8 +26,8 @@ import {
 } from "../examples/session-bundles.ts";
 
 const fixtures = buildSessionBundleFixtures();
-// §10.5.1: the reputation fixtures are the buyer's own anchored session bundles.
-const anchoredBuyer = fixtures.reputationBundles.map((bundle) => ({ bundle, anchoredBy: VERIFY_BUYER_CLAIM }));
+// §10.5.1: reputation fixtures are session bundles the buyer is a party to (each anchoredByRole="buyer" — its own copy).
+const reps = fixtures.reputationBundles;
 // §10.4.2: the consumer's externally-known expected parties for the session under audit.
 const VERIFY_EXPECTED = { buyer: VERIFY_BUYER_CLAIM, seller: VERIFY_SELLER_CLAIM };
 
@@ -110,12 +112,22 @@ test("stateToOutcome maps terminal states and errorClass partitions", () => {
   expect(stateToOutcome("settle-failed", "settlement-atomicity")).toBe("failed-counterparty");
   expect(stateToOutcome("settle-failed", "substrate")).toBeNull();
   expect(stateToOutcome("settle-pending")).toBeNull();
+  expect(stateToOutcome("settle-asymmetric")).toBeNull(); // ST-8: non-terminal, no bundle outcome
+});
+
+test("ST-8: settle-asymmetric is a legal non-terminal cross-chain open state", () => {
+  // §10.3.1 ST-8 (R4-A): settle-pending may enter settle-asymmetric on the HTLC-9 condition; it resolves forward
+  // to settle-completed (htlc-claim in window) or settle-failed (window expiry), and is itself non-terminal.
+  expect(isLegalTransition("settle-pending", "settle-asymmetric")).toBe(true);
+  expect(isLegalTransition("settle-asymmetric", "settle-completed")).toBe(true);
+  expect(isLegalTransition("settle-asymmetric", "settle-failed")).toBe(true);
+  expect(isLegalTransition("settle-asymmetric", "finalised")).toBe(false); // must resolve via settle-completed first
+  expect(TERMINAL_STATES.has("settle-asymmetric")).toBe(false);
 });
 
 test("deriveReputation excludes failed-substrate from party fault denominator", () => {
-  const derivation = deriveReputation(
-    VERIFY_BUYER_CLAIM,
-    anchoredBuyer,
+  const derivation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer",
+    reps,
     VERIFY_REPUTATION_WINDOW_START,
     VERIFY_REPUTATION_WINDOW_END,
     VERIFY_REPUTATION_COMPUTED_AT,
@@ -130,9 +142,8 @@ test("deriveReputation excludes failed-substrate from party fault denominator", 
 });
 
 test("deriveReputation returns null metrics, not zero, when denominator is zero", () => {
-  const onlySubstrate = anchoredBuyer.filter((a) => a.bundle.outcome === "failed-substrate");
-  const derivation = deriveReputation(
-    VERIFY_BUYER_CLAIM,
+  const onlySubstrate = reps.filter((b) => b.outcome === "failed-substrate");
+  const derivation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer",
     onlySubstrate,
     VERIFY_REPUTATION_WINDOW_START,
     VERIFY_REPUTATION_WINDOW_END,
@@ -146,9 +157,8 @@ test("deriveReputation returns null metrics, not zero, when denominator is zero"
 });
 
 test("deriveReputation filters by window and scoped party", () => {
-  const outside = deriveReputation(
-    VERIFY_BUYER_CLAIM,
-    anchoredBuyer,
+  const outside = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer",
+    reps,
     VERIFY_REPUTATION_WINDOW_END + 1,
     VERIFY_REPUTATION_WINDOW_END + 2_000,
     VERIFY_REPUTATION_COMPUTED_AT,
@@ -156,7 +166,7 @@ test("deriveReputation filters by window and scoped party", () => {
   expect(outside.bundleCount).toBe(1);
   expect(outside.metrics.completionRate).toBe(1);
 
-  const empty = deriveReputation("did:demos:not-present", anchoredBuyer, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  const empty = deriveReputation("did:demos:not-present", () => "buyer", reps, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
   expect(empty.bundleCount).toBe(0);
   expect(empty.metrics.completionRate).toBeNull();
   expect(empty.metrics.counterpartyDisputeRate).toBeNull();
@@ -170,7 +180,7 @@ test("consumeBundles rejects a bundle whose role-party did not sign it (role-sig
 
 test("deriveReputation window is closed-interval inclusive on both ends", () => {
   // §10.5.1 (L3217): a bundle at exactly windowStart==windowEnd is scoped (pins the window-edge off-by-one).
-  const at = deriveReputation(VERIFY_BUYER_CLAIM, anchoredBuyer, VERIFY_REPUTATION_WINDOW_START + 1000, VERIFY_REPUTATION_WINDOW_START + 1000, VERIFY_REPUTATION_COMPUTED_AT);
+  const at = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_START + 1000, VERIFY_REPUTATION_WINDOW_START + 1000, VERIFY_REPUTATION_COMPUTED_AT);
   expect(at.bundleCount).toBe(1);
   expect(at.metrics.completionRate).toBe(1);
 });
@@ -189,12 +199,91 @@ test("twoSidedLookup ignores a fetched bundle whose embedded jobId differs (cros
   expect(consumeBundles("DACS-VERIFY-L3-OTHER", fetch, fixtures.resolveKey, VERIFY_EXPECTED).verdict).toBe("absent");
 });
 
-test("deriveReputation counts a unified session once across both anchored copies; abort outcome is anchorer-relative", () => {
-  const completedBundle = fixtures.reputationBundles.find((b) => b.outcome === "completed" && b.finalisedAt <= VERIFY_REPUTATION_WINDOW_END)!;
-  const both = deriveReputation(VERIFY_BUYER_CLAIM, [{ bundle: completedBundle, anchoredBy: VERIFY_BUYER_CLAIM }, { bundle: completedBundle, anchoredBy: VERIFY_SELLER_CLAIM }], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
-  expect(both.bundleCount).toBe(1);
-  // buyer-anchored bundles scored for the seller must not fault the seller
-  const seller = deriveReputation(VERIFY_SELLER_CLAIM, anchoredBuyer, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
-  expect(seller.bundleCount).toBe(0);
-  expect(seller.metrics.counterpartyDisputeRate).toBeNull();
+test("deriveReputation two-sided reconciliation: victim scored over both copies counts the abort once (no double-count)", () => {
+  // §10.5.1: ONE jobId with victim's aborted-by-other copy + withdrawer's aborted-by-self copy. Scoring the victim
+  // (buyer) → its own copy is the self_copy (read literally) → exactly ONE aborted-by-other, not two.
+  const pair = [fixtures.reconcileVictimBuyer, fixtures.reconcileWithdrawerSeller];
+  const victim = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", pair, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(victim.bundleCount).toBe(1);
+  expect(victim.metrics.completionRate).toBe(0);
+  expect(victim.metrics.counterpartyDisputeRate).toBe(1); // the single aborted-by-other, counted once
+});
+
+test("deriveReputation perspective_flip: the withdrawer takes the abort hit (§10.11 guarantee, R4-B)", () => {
+  const pair = [fixtures.reconcileVictimBuyer, fixtures.reconcileWithdrawerSeller];
+  // Withdrawer (seller) scored over both copies → its own aborted-by-self self_copy → aborter takes the hit.
+  const withdrawerBoth = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", pair, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(withdrawerBoth.bundleCount).toBe(1);
+  expect(withdrawerBoth.metrics.counterpartyDisputeRate).toBe(0); // self-abort is not counterparty fault
+  // §10.11 suppression: only the victim's counterparty-anchored copy exists → perspective_flip(aborted-by-other)
+  // = aborted-by-self → the withdrawer still takes the hit, NOT the victim.
+  const withdrawerFlip = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", [fixtures.reconcileVictimBuyer], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(withdrawerFlip.bundleCount).toBe(1);
+  expect(withdrawerFlip.metrics.counterpartyDisputeRate).toBe(0);
+});
+
+test("deriveReputation R4-B: a party scored over only counterparty-anchored bundles IS scored via perspective_flip", () => {
+  // The pre-R4-B model scoped by anchoredBy==party and would have returned bundleCount 0 here (the defect). The
+  // corrected model scores the seller over the buyer-anchored set via perspective_flip.
+  const seller = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", reps, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(seller.bundleCount).toBe(5);
+  expect(seller.metrics.completionRate).toBe(0.25);
+  expect(seller.metrics.counterpartyDisputeRate).toBe(0.25);
+});
+
+test("deriveReputation rating aggregation de-duplicates by (rater, jobId, targetRole) and excludes self-ratings", () => {
+  // §10.5.1: rating-a (value 3) and rating-b (value 5) share (seller, jobId, buyer) → last-writer-wins by ratedAt
+  // (rating-b later → 5); rating-self is rater==buyer (scored party) → excluded. averageBuyerRating == 5.
+  const derivation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", [fixtures.ratingBundle], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT, { resolveRating: fixtures.resolveRating });
+  expect(derivation.metrics.averageBuyerRating).toBe(5);
+  expect(derivation.metrics.averageSellerRating).toBeNull();
+  // Without a resolver the metric is null (no signal), never a partial aggregate.
+  const noResolver = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", [fixtures.ratingBundle], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(noResolver.metrics.averageBuyerRating).toBeNull();
+});
+
+test("deriveReputation observedTransactionalVolume sums agreement price by currency via resolver", () => {
+  // §10.5.1: 5 in-window reconciled bundles, each agreementRef resolves to 5 usdc → 25 usdc grouped by currency.
+  const derivation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT, { resolveAgreement: fixtures.resolveAgreement });
+  expect(derivation.metrics.observedTransactionalVolume).toEqual([{ amount: "25", currency: "usdc" }]);
+});
+
+test("deriveReputation ignores self-declared party roles — a relabelled bundle cannot flip its own abort (trust boundary)", () => {
+  // §10.5.1/§10.4.2: role_of_party is the externally-known partyRole, not the bundle's untrusted `parties` labels. A
+  // buyer-anchored aborted-by-self bundle that relabels the buyer's claim as "seller" must STILL read aborted-by-self
+  // literally (self_copy keyed on anchoredByRole) — the buyer keeps the hit. Pre-fix (role from `parties`) it would have
+  // missed the self_copy and perspective_flip'd aborted-by-self → aborted-by-other, letting the buyer escape the abort.
+  const abortSelf = reps.find((b) => b.outcome === "aborted-by-self")!; // buyer-anchored
+  const relabelled = { ...abortSelf, parties: abortSelf.parties.map((p) => ({ ...p, role: (p.primaryClaim === VERIFY_BUYER_CLAIM ? "seller" : "buyer") as "buyer" | "seller" })) };
+  const scored = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", [relabelled], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(scored.bundleCount).toBe(1);
+  expect(scored.metrics.counterpartyDisputeRate).toBe(0); // would be 1 under the pre-fix parties-derived role (flip)
+  expect(scored.metrics.completionRate).toBe(0);
+});
+
+test("deriveReputation role binding is PER-JOB — a party that is buyer in one session and seller in another", () => {
+  // §10.5.1: the SAME claim is the buyer in REP-ABORT-SELF and GENUINELY the seller in MIXEDROLE-B — there it is the
+  // seller-role party AND the seller-anchored signer of a REAL signed bundle (fixtures.mixedRoleSellerBundle), not a
+  // mutated-signature copy. A PER-JOB resolvePartyRole reads BOTH aborted-by-self copies literally → no fault. A single
+  // derivation-wide role would miss the off-role self_copy and perspective_flip it into a counterparty fault.
+  const abortSelf = reps.find((b) => b.outcome === "aborted-by-self")!; // VERIFY_BUYER_CLAIM is the buyer here
+  const sellerSide = fixtures.mixedRoleSellerBundle;            // VERIFY_BUYER_CLAIM is genuinely the seller here
+  // HONEST FIXTURE: derive() assumes verified inputs (§10.4.3), so the off-role copy must itself pass verifyBundle.
+  expect(verifyBundle(sellerSide, fixtures.resolveKey)).toBe("pass");
+  expect(sellerSide.jobId).toBe(VERIFY_MIXEDROLE_JOB_ID);
+  expect(sellerSide.anchoredByRole).toBe("seller");
+  expect(sellerSide.parties.find((p) => p.primaryClaim === VERIFY_BUYER_CLAIM)?.role).toBe("seller");
+  const resolve = (jobId: string): "buyer" | "seller" => (jobId === VERIFY_MIXEDROLE_JOB_ID ? "seller" : "buyer");
+  const mixed = deriveReputation(VERIFY_BUYER_CLAIM, resolve, [abortSelf, sellerSide], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  expect(mixed.bundleCount).toBe(2);
+  expect(mixed.metrics.counterpartyDisputeRate).toBe(0); // both self-aborts read literally; pre-fix scalar role → 0.5
+  expect(mixed.metrics.completionRate).toBe(0);
+});
+
+test("verifyBundle rejects a bundle missing the required anchoredByRole field", () => {
+  // §10.4 (L3085): anchoredByRole is REQUIRED + signed. A pre-R4-B bundle without it is structurally unsupported.
+  const { anchoredByRole, ...withoutRole } = fixtures.reconcileVictimBuyer;
+  void anchoredByRole;
+  expect(fixtures.reconcileVictimBuyer.anchoredByRole).toBe("buyer");
+  expect(verifyBundle(withoutRole as unknown as typeof fixtures.reconcileVictimBuyer, fixtures.resolveKey)).toBe("fail");
 });

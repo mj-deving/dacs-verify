@@ -94,6 +94,7 @@ import {
   VERIFY_DIVERGENT_JOB_ID,
   VERIFY_ONE_SIDED_JOB_ID,
   VERIFY_MISANCHORED_JOB_ID,
+  VERIFY_MIXEDROLE_JOB_ID,
   VERIFY_REPUTATION_COMPUTED_AT,
   VERIFY_REPUTATION_WINDOW_END,
   VERIFY_REPUTATION_WINDOW_START,
@@ -332,7 +333,6 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const knownBundles = divergentBundleRefs;
   const htlc9JobId = bundleHtlc9.bundle.jobId;
   const htlc9BundleHash = bundleHtlc9.bundleHash;
-  const htlc9KnownBundles = [{ jobId: htlc9JobId, bundleHash: htlc9BundleHash }];
   const requirement: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "arbitrator-accreditation", verificationRequired: true }], primaryClaimSelector: "did" };
   const agreedRule: ArbitrationRule = { requirement, arbitrators: [arbitratorClaim], policyVersion: 1 };
   const ruleRef = sha256Hex(canonicalize(agreedRule));
@@ -348,13 +348,6 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     const unsigned: Omit<DisputeRecord, "signature"> = {
       dacsXVersion: "1", disputeId: "d1", initiator: buyerClaim, disputed: divergentBundleRefs,
       contestedClaim: "divergent-bundle", requestedRemedy: "refund", arbitration: { ruleRef }, openedAt: NOW,
-    };
-    return { ...unsigned, signature: signArtifact(dacsXSeparator("dacs-x-dispute-record"), unsigned as unknown as Record<string, unknown>, signer.privateKey) };
-  };
-  const makeHtlc9Record = (signer = buyer): DisputeRecord => {
-    const unsigned: Omit<DisputeRecord, "signature"> = {
-      dacsXVersion: "1", disputeId: "d1-htlc9", initiator: buyerClaim, disputed: [{ jobId: htlc9JobId, bundleHash: htlc9BundleHash }],
-      contestedClaim: "asymmetric-settlement", requestedRemedy: "no-fault", arbitration: { ruleRef }, openedAt: NOW,
     };
     return { ...unsigned, signature: signArtifact(dacsXSeparator("dacs-x-dispute-record"), unsigned as unknown as Record<string, unknown>, signer.privateKey) };
   };
@@ -406,26 +399,14 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("dispute-unknown-bundle-fail", "dispute", "§11.2.1", "a dispute pinned to an unknown bundle → FAIL",
     verifyDisputeFlow(unknownBundle).decision, "fail");
 
-  const htlc9Record = makeHtlc9Record();
-  const htlc9: DisputeFlowInput = {
-    record: htlc9Record,
-    initiatorPublicKeyRaw: buyer.publicKeyRaw,
-    knownBundles: htlc9KnownBundles,
-    arbitratorBundle,
-    agreedRule,
-    now: NOW + 1000,
-    outcome: makeOutcome(htlc9Record, arbitrator, {
-      kind: "correction-ordered",
-      correctedOutcome: "failure",
-      reason: "dest-revealed-source-unclaimed",
-      revealTxRef: ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF,
-    }),
-    arbitratorPublicKeyRaw: arbitrator.publicKeyRaw,
-    priorReputation: { jobId: htlc9JobId, weight: 1 },
-  };
-  const htlc9Res = verifyDisputeFlow(htlc9);
-  rec("dispute-htlc9-correction-pass", "dispute", "§11.2.1", "HTLC-9 asymmetric settlement closes via a correction amendment → PASS, contribution voided (never a refund)",
-    { decision: htlc9Res.decision, effectiveWeight: htlc9Res.reweighted?.effectiveWeight }, { decision: "pass", effectiveWeight: 0 });
+  // (Removed) The former `dispute-htlc9-correction-pass` golden vector asserted an HTLC-9 asymmetric settlement closing
+  // via a `correction` amendment. Round-4 R4-A REMOVED the correction amendment: an HTLC-9 asymmetric loss now resolves
+  // at the SETTLEMENT layer through the non-terminal ST-8 `settle-asymmetric` state (→ terminal `completed` on htlc-claim,
+  // → terminal `failed-counterparty` on window expiry; covered by the §14.5 verify-st-asymmetric-* vectors). A dispute
+  // over the window-expired terminal `failed-counterparty` uses a standard remedy — there is no spec correction path to
+  // assert as golden. Re-aligning the DACS-X prototype's `correction-ordered` remedy + the htlc9 fixture outcome is
+  // tracked for #99 convergence (bead DACS-standard-snt). ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF remains exercised by
+  // the bundle-htlc9-pass vector (structural bundle verification + reveal-txRef presence).
 
   golden["dispute"] = {
     status: "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
@@ -753,18 +734,11 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       abortedByOtherRole: result.abortedByOtherRole,
     };
   };
-  // §10.5.1: the reputation fixtures are the BUYER's own anchored session bundles (one per session).
-  const anchoredBuyer = verifySession.reputationBundles.map((bundle) => ({ bundle, anchoredBy: VERIFY_BUYER_CLAIM }));
-  const reputation = deriveReputation(
-    VERIFY_BUYER_CLAIM,
-    anchoredBuyer,
-    VERIFY_REPUTATION_WINDOW_START,
-    VERIFY_REPUTATION_WINDOW_END,
-    VERIFY_REPUTATION_COMPUTED_AT,
-  );
-  const substrateOnly = deriveReputation(
-    VERIFY_BUYER_CLAIM,
-    anchoredBuyer.filter((a) => a.bundle.outcome === "failed-substrate"),
+  // §10.5.1: reputation fixtures are session bundles the BUYER is a party to (each anchoredByRole="buyer" — its own copy).
+  const reps = verifySession.reputationBundles;
+  const reputation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  const substrateOnly = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer",
+    reps.filter((b) => b.outcome === "failed-substrate"),
     VERIFY_REPUTATION_WINDOW_START,
     VERIFY_REPUTATION_WINDOW_END,
     VERIFY_REPUTATION_COMPUTED_AT,
@@ -778,26 +752,42 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   // not classified present → absent; unverifiable storage data must not drive abort provenance.
   const wrongBuyerKey = new Uint8Array(Buffer.from(verifySession.publicKeys[VERIFY_SELLER_CLAIM]!, "base64url"));
   const unverifiedSigVerdict = consumeBundles(VERIFY_ONE_SIDED_JOB_ID, verifySession.fetchOneSided, (claim) => (claim === VERIFY_BUYER_CLAIM ? wrongBuyerKey : verifySession.resolveKey(claim)), VERIFY_EXPECTED).verdict;
-  // §10.4.3(c)/§10.5.1: both two-sided copies of ONE unified session, scored for buyer → counted once (no double-count).
-  const completedBundle = verifySession.reputationBundles.find((b) => b.outcome === "completed" && b.finalisedAt <= VERIFY_REPUTATION_WINDOW_END)!;
-  const noDoubleCount = deriveReputation(
-    VERIFY_BUYER_CLAIM,
-    [{ bundle: completedBundle, anchoredBy: VERIFY_BUYER_CLAIM }, { bundle: completedBundle, anchoredBy: VERIFY_SELLER_CLAIM }],
-    VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT,
-  );
-  // §10.4.3/§10.11/§10.5.1: buyer-anchored bundles scored for the SELLER must NOT fault the seller (abort provenance).
-  const abortProvenance = deriveReputation(
-    VERIFY_SELLER_CLAIM,
-    anchoredBuyer,
-    VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT,
-  );
-  // §10.5.1 (L3217): the finalisedAt window is closed-interval INCLUSIVE on both ends — a bundle whose finalisedAt
-  // equals windowStart==windowEnd (the completed fixture at START+1000) is scoped. Pins the window-edge off-by-one.
-  const boundaryInclusive = deriveReputation(
-    VERIFY_BUYER_CLAIM,
-    anchoredBuyer,
-    VERIFY_REPUTATION_WINDOW_START + 1_000, VERIFY_REPUTATION_WINDOW_START + 1_000, VERIFY_REPUTATION_COMPUTED_AT,
-  );
+  // §10.5.1 two-sided reconciliation: ONE jobId, buyer-victim copy (aborted-by-other) + seller-withdrawer copy
+  // (aborted-by-self). Scoring the VICTIM (buyer) over BOTH copies → self_copy wins → exactly ONE aborted-by-other,
+  // counted once (counterpartyDisputeRate 1, completionRate 0); the second copy does NOT double-count.
+  const reconcilePair = [verifySession.reconcileVictimBuyer, verifySession.reconcileWithdrawerSeller];
+  const noDoubleCount = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reconcilePair, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // Scoring the WITHDRAWER (seller) over both copies → self_copy is the seller's own aborted-by-self → the aborter
+  // takes the hit, not the victim (counterpartyDisputeRate 0).
+  const reconcileWithdrawer = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", reconcilePair, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.11 suppression / perspective_flip: scoring the WITHDRAWER (seller) over ONLY the victim's buyer-anchored copy
+  // → no seller self_copy → perspective_flip(aborted-by-other)=aborted-by-self → the withdrawer still takes the hit.
+  const perspectiveFlipOnly = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", [verifySession.reconcileVictimBuyer], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.5.1 (R4-B): a party scored over only COUNTERPARTY-anchored bundles IS scored via perspective_flip — NOT
+  // excluded (the pre-R4-B anchoredBy-only narrowing was the defect). The buyer-anchored reputation set scored for the
+  // SELLER flips each outcome to the seller's perspective: failed-counterparty→failed-perm, aborted-by-other→aborted-by-self.
+  const sellerPerspective = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", reps, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.5.1 (L3217): finalisedAt window is closed-interval INCLUSIVE on both ends — a bundle at windowStart==windowEnd is scoped.
+  const boundaryInclusive = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_START + 1_000, VERIFY_REPUTATION_WINDOW_START + 1_000, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.5.1 rating aggregation + de-duplication (L3285/L3344): rating-a/rating-b share (seller, jobId, buyer) →
+  // last-writer-wins by ratedAt (value 5 over 3); rating-self is rater==buyer (scored party) → excluded (no self-rating).
+  const ratingDerivation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", [verifySession.ratingBundle], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT, { resolveRating: verifySession.resolveRating });
+  // §10.5.1 observedTransactionalVolume (L3327): sum agreement.terms.price by currency over reconciled bundles whose
+  // agreementRef resolves (resolver returns 5 usdc per agreement; 5 in-window reps → 25 usdc).
+  const volumeDerivation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT, { resolveAgreement: verifySession.resolveAgreement });
+  // §10.5.1/§10.4.2 trust boundary: role_of_party is the EXTERNALLY-KNOWN partyRole, NOT self-declared `parties`. A
+  // buyer-anchored aborted-by-self bundle that adversarially relabels the buyer's claim as "seller" must still be read
+  // literally (self_copy keyed on anchoredByRole) — the abort stays on the buyer; it must NOT flip to a counterparty fault.
+  const abortSelfBundle = reps.find((b) => b.outcome === "aborted-by-self")!;
+  const relabelledAbort = { ...abortSelfBundle, parties: abortSelfBundle.parties.map((p) => ({ ...p, role: (p.primaryClaim === VERIFY_BUYER_CLAIM ? "seller" : "buyer") as "buyer" | "seller" })) };
+  const relabelDefeated = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", [relabelledAbort], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.5.1 mixed-role window: the SAME claim (VERIFY_BUYER_CLAIM) is the buyer in REP-ABORT-SELF and genuinely the
+  // SELLER in MIXEDROLE-B — there it is the seller-role party AND the seller-anchored signer of a REAL signed bundle
+  // (verifySession.mixedRoleSellerBundle, which PASSES verifyBundle), not a mutated-signature copy. The PER-JOB role
+  // binding reads BOTH aborted-by-self copies literally; a single derivation-wide role would miss the off-role
+  // self_copy and perspective_flip it into a spurious counterparty fault.
+  const mixedRoleResolve = (jobId: string): "buyer" | "seller" => (jobId === VERIFY_MIXEDROLE_JOB_ID ? "seller" : "buyer");
+  const mixedRole = deriveReputation(VERIFY_BUYER_CLAIM, mixedRoleResolve, [abortSelfBundle, verifySession.mixedRoleSellerBundle], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
 
   rec("verify-address-buyer", "verify", "§10.4.2", "buyer bundle address is stor-{sha256(jobId + \"-bundle-buyer\")}",
     bundleAddress("job-1", "buyer"), "stor-c7bc689288bad9d6f448ca14c9aa949a4c9574a317f4a591c7f9486f4f7a6b8f");
@@ -858,6 +848,12 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     isLegalTransition("finalised", "rate-pending"), false);
   rec("verify-st-paused-final-illegal", "verify", "§10.3.1 ST-7", "substrate-failure-paused → finalised is illegal",
     isLegalTransition("substrate-failure-paused", "finalised"), false);
+  rec("verify-st-settle-asymmetric-legal", "verify", "§10.3.1 ST-8", "settle-pending → settle-asymmetric (HTLC-9 dest-revealed-source-unclaimed open state) is legal",
+    isLegalTransition("settle-pending", "settle-asymmetric"), true);
+  rec("verify-st-asymmetric-resolve-legal", "verify", "§10.3.1 ST-8", "settle-asymmetric resolves forward: → settle-completed (htlc-claim in window) or → settle-failed (window expiry)",
+    [isLegalTransition("settle-asymmetric", "settle-completed"), isLegalTransition("settle-asymmetric", "settle-failed")], [true, true]);
+  rec("verify-st-asymmetric-nonterminal", "verify", "§10.3.1 ST-6/ST-8", "settle-asymmetric is non-terminal: no direct → finalised, and no bundle outcome until it resolves",
+    [isLegalTransition("settle-asymmetric", "finalised"), stateToOutcome("settle-asymmetric")], [false, null]);
 
   rec("verify-outcome-finalised", "verify", "§10.3.1", "finalised → completed",
     stateToOutcome("finalised"), "completed");
@@ -890,7 +886,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     },
     { bundleCount: 1, completionRate: null, counterpartyDisputeRate: null, completionIsZero: false, disputeIsZero: false });
   rec("verify-reputation-window", "verify", "§10.5.1", "window filtering excludes out-of-window bundles from scoped count",
-    deriveReputation(VERIFY_BUYER_CLAIM, anchoredBuyer, VERIFY_REPUTATION_WINDOW_END + 1, VERIFY_REPUTATION_WINDOW_END + 2_000, VERIFY_REPUTATION_COMPUTED_AT).bundleCount,
+    deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_END + 1, VERIFY_REPUTATION_WINDOW_END + 2_000, VERIFY_REPUTATION_COMPUTED_AT).bundleCount,
     1);
   rec("verify-reputation-ratings-volume-l3-null", "verify", "§10.5.1", "L3 leaves rating/volume resolution unset without a resolver",
     {
@@ -901,11 +897,29 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     { averageBuyerRating: null, averageSellerRating: null, observedTransactionalVolume: [] });
   rec("verify-lookup-cross-session-jobid-ignored", "verify", "§10.4.3(a)", "a fetched bundle whose embedded jobId ≠ the looked-up jobId is ignored → absent (cross-session replay/misreturn)",
     crossSessionVerdict, "absent");
-  rec("verify-reputation-no-double-count", "verify", "§10.5.1", "both two-sided copies of one unified session, scored for buyer → counted once",
-    { bundleCount: noDoubleCount.bundleCount, bundleRefs: noDoubleCount.bundleRefs.length }, { bundleCount: 1, bundleRefs: 1 });
-  rec("verify-reputation-abort-provenance", "verify", "§10.4.3/§10.11", "buyer-anchored bundles scored for the SELLER do not fault the seller (abort outcome is anchorer-relative)",
-    { bundleCount: abortProvenance.bundleCount, counterpartyDisputeRate: abortProvenance.metrics.counterpartyDisputeRate },
-    { bundleCount: 0, counterpartyDisputeRate: null });
+  rec("verify-reputation-no-double-count", "verify", "§10.5.1", "two-sided reconciliation: victim scored over BOTH copies of one abort → self_copy wins → exactly one aborted-by-other, counted once (no double-count)",
+    { bundleCount: noDoubleCount.bundleCount, bundleRefs: noDoubleCount.bundleRefs.length, completionRate: noDoubleCount.metrics.completionRate, counterpartyDisputeRate: noDoubleCount.metrics.counterpartyDisputeRate },
+    { bundleCount: 1, bundleRefs: 1, completionRate: 0, counterpartyDisputeRate: 1 });
+  rec("verify-reputation-reconcile-withdrawer", "verify", "§10.5.1/§10.11", "the WITHDRAWER scored over both copies → its own aborted-by-self self_copy → the aborter takes the hit (no counterparty fault)",
+    { bundleCount: reconcileWithdrawer.bundleCount, completionRate: reconcileWithdrawer.metrics.completionRate, counterpartyDisputeRate: reconcileWithdrawer.metrics.counterpartyDisputeRate },
+    { bundleCount: 1, completionRate: 0, counterpartyDisputeRate: 0 });
+  rec("verify-reputation-perspective-flip", "verify", "§10.5.1/§10.11", "withdrawer scored over ONLY the victim's counterparty-anchored copy → perspective_flip(aborted-by-other)=aborted-by-self → withdrawer still takes the hit",
+    { bundleCount: perspectiveFlipOnly.bundleCount, completionRate: perspectiveFlipOnly.metrics.completionRate, counterpartyDisputeRate: perspectiveFlipOnly.metrics.counterpartyDisputeRate },
+    { bundleCount: 1, completionRate: 0, counterpartyDisputeRate: 0 });
+  rec("verify-reputation-seller-perspective-flip", "verify", "§10.5.1", "R4-B fix: a party scored over only counterparty-anchored bundles IS scored via perspective_flip, NOT excluded (pre-R4-B anchoredBy-only narrowing was the defect)",
+    { bundleCount: sellerPerspective.bundleCount, completionRate: sellerPerspective.metrics.completionRate, counterpartyDisputeRate: sellerPerspective.metrics.counterpartyDisputeRate },
+    { bundleCount: 5, completionRate: 0.25, counterpartyDisputeRate: 0.25 });
+  rec("verify-reputation-rating-dedup", "verify", "§10.5.1", "ratings via resolver: (rater,jobId,targetRole) de-dup last-writer-wins by ratedAt (5 over 3) + no self-rating → averageBuyerRating 5",
+    { averageBuyerRating: ratingDerivation.metrics.averageBuyerRating, averageSellerRating: ratingDerivation.metrics.averageSellerRating },
+    { averageBuyerRating: 5, averageSellerRating: null });
+  rec("verify-reputation-volume-grouped", "verify", "§10.5.1", "observedTransactionalVolume sums agreement.terms.price by currency over reconciled bundles whose agreementRef resolves (5 × 5 usdc = 25)",
+    volumeDerivation.metrics.observedTransactionalVolume, [{ amount: "25", currency: "usdc" }]);
+  rec("verify-reputation-relabel-attack-defeated", "verify", "§10.5.1/§10.4.2", "role_of_party is the externally-known binding, not self-declared `parties`: a buyer bundle that relabels its own claim still reads aborted-by-self literally (NOT flipped to a counterparty fault)",
+    { bundleCount: relabelDefeated.bundleCount, counterpartyDisputeRate: relabelDefeated.metrics.counterpartyDisputeRate, completionRate: relabelDefeated.metrics.completionRate },
+    { bundleCount: 1, counterpartyDisputeRate: 0, completionRate: 0 });
+  rec("verify-reputation-mixed-role-window", "verify", "§10.5.1", "per-job role binding: a party that is buyer in one session and seller in another reads BOTH self-aborts literally — no spurious counterparty fault from a derivation-wide role; the off-role copy is a real signed seller-anchored bundle that verifies (honest fixture, not a mutated copy)",
+    { bundleCount: mixedRole.bundleCount, counterpartyDisputeRate: mixedRole.metrics.counterpartyDisputeRate, completionRate: mixedRole.metrics.completionRate, mixedRoleFixtureVerifies: verifySession.decisions.mixedRoleSellerBundle },
+    { bundleCount: 2, counterpartyDisputeRate: 0, completionRate: 0, mixedRoleFixtureVerifies: "pass" });
   rec("verify-one-sided-role-signature-binding", "verify", "§10.4.2/§10.11", "a bundle at the BUYER address NOT signed by the expected buyer claim is rejected → absent (anchoring binds to the externally-known party, NOT to self-declared/relabelled `parties` roles)",
     misanchoredVerdict, "absent");
   rec("verify-one-sided-unverified-signature-absent", "verify", "§10.4.2/§10.11", "a present side whose role signature does NOT verify (wrong/forged key) is not classified present → absent (no abort provenance from unverifiable storage)",
@@ -942,9 +956,12 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     },
     consistencyChecks: {
       crossSessionJobIdIgnored: crossSessionVerdict,
-      unifiedNoDoubleCountBundleCount: noDoubleCount.bundleCount,
-      sellerAbortProvenanceBundleCount: abortProvenance.bundleCount,
-      sellerAbortProvenanceDisputeRate: abortProvenance.metrics.counterpartyDisputeRate,
+      reconcileVictimBundleCount: noDoubleCount.bundleCount,
+      reconcileVictimDisputeRate: noDoubleCount.metrics.counterpartyDisputeRate,
+      sellerPerspectiveBundleCount: sellerPerspective.bundleCount,
+      sellerPerspectiveDisputeRate: sellerPerspective.metrics.counterpartyDisputeRate,
+      ratingDedupAverageBuyer: ratingDerivation.metrics.averageBuyerRating,
+      volumeGrouped: volumeDerivation.metrics.observedTransactionalVolume,
       misanchoredRoleSignatureRejected: misanchoredVerdict,
       unverifiedSignatureRejected: unverifiedSigVerdict,
       windowBoundaryInclusiveCount: boundaryInclusive.bundleCount,

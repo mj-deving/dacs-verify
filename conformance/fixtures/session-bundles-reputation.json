@@ -8,6 +8,7 @@
       "bundleVersion": "1",
       "jobId": "DACS-VERIFY-L3-REP-COMPLETED",
       "outcome": "completed",
+      "anchoredByRole": "buyer",
       "listingRef": {
         "listingId": "listing-dacs-verify-l3-rep-completed",
         "version": 1,
@@ -57,12 +58,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "rPZ3EGKwOFtos8gPx-Zs2B5926ndr4ftVLCd5ibIqakA4LZvoQBvb8V01yzusPK32B-RrVMX-eUYQ181eEJrBw"
+          "value": "wJYckV8ez5RHAmv69Q1ktUQsorl8lo5DhDfKiUu0jdqxQ1OmULiYvxsjVh1Ws9YfwSyulM9gWw1tRqe6Jks-CA"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "iQyeCPGeOhTCl2XZxPMJ71i93PeuFmLKIjLiIxsjhBvFI56XgY3QC1aKF12uj11Bx59O_Ce0X7RBfio0hA7CDQ"
+          "value": "uPWRPvi-Pgmw3E5KPkSJ4SENeSAHSJrSmfks7xgwOB8j-8MPDqEMr4SR4-pDi_VUTG7CofIm9IDYvJx3T9I2DQ"
         }
       ]
     },
@@ -70,6 +71,7 @@
       "bundleVersion": "1",
       "jobId": "DACS-VERIFY-L3-REP-COUNTERPARTY",
       "outcome": "failed-counterparty",
+      "anchoredByRole": "buyer",
       "listingRef": {
         "listingId": "listing-dacs-verify-l3-rep-counterparty",
         "version": 1,
@@ -120,12 +122,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "hNfCS0rlJui9yohQ_2D0rEwDY1Sl-GBH1IMBbCa6MFG4SLsGo0aVfiHnaLO9RSktY44geKoS2xl4tfNSdn3fCA"
+          "value": "KK8UHaUVlW-LSaTHufTHE8oQdCiED9qbHD6pp2ivpvydhZrQPfgrLZoQtHIh7jtXlyYDSY6Gv0sO7cUN-se0Cg"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "CtZ6K_t_jQLvPFO_LEFpdrcCLBKP-rkuhanUk5q-gh_R2nbJAQVGBSZZZ0VBXw6wGhu6EdWHp7-xAUc0Eh3OBg"
+          "value": "M-xvyA41tmqZbQJX_KWNchLTOMx-Q0YcJA7BOfDimyNnrKqe33evijmAAbgF5S4v4isXcLk55pTY-mt4f_CtAg"
         }
       ]
     },
@@ -133,6 +135,7 @@
       "bundleVersion": "1",
       "jobId": "DACS-VERIFY-L3-REP-SUBSTRATE",
       "outcome": "failed-substrate",
+      "anchoredByRole": "buyer",
       "listingRef": {
         "listingId": "listing-dacs-verify-l3-rep-substrate",
         "version": 1,
@@ -183,12 +186,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "GyICjLQOunRBHlMQU61MXofvelFozatBLnvodP9WPDhwIFvHk7b6zSkUybTH32ivcX4a3O3gAdlMcj-fBrzGCg"
+          "value": "bGpsXy_4_-mLFwYD-B4v_KzfmTg0z0Ur14cuhN84nuwxBIumwQvHdENQfNPzwLBeP1uJ3vzWodjyPspkAPGnBw"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "08S7rnCiJ5FoKYBDov7KV_EM_J86SeaItQKtZDDvHRotOX4WPu5izGcvyNMHSPBOcitlMG0hIBObc-W6rpvWDg"
+          "value": "ekJc_XTi1k_JRdVM5P9RUZZChsQykhWHHeU3SYzAtQ1eqzpO2-2CCGV0Im1CPLDyrfyGPa6DeAo0aj7qRw8xBA"
         }
       ]
     },
@@ -196,6 +199,7 @@
       "bundleVersion": "1",
       "jobId": "DACS-VERIFY-L3-REP-ABORT-SELF",
       "outcome": "aborted-by-self",
+      "anchoredByRole": "buyer",
       "listingRef": {
         "listingId": "listing-dacs-verify-l3-rep-abort-self",
         "version": 1,
@@ -246,7 +250,7 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "pfUnsnMd9Q-7DH72pmvkbcEAwB5keS_1QY-slv-88F6KoD1SlbUJTIBK4HjX8q0W2Gn1oblsQzvW-LcME9VvDw"
+          "value": "rjkrOz8HoyXv_suaq2BEDoWhnTlTR8vps8M-8xRHsUPNNuBy51M_UYpWd6ZaLxrpd4Dr2lIa88JpDYyMfa20AQ"
         }
       ]
     },
@@ -254,6 +258,7 @@
       "bundleVersion": "1",
       "jobId": "DACS-VERIFY-L3-REP-ABORT-OTHER",
       "outcome": "aborted-by-other",
+      "anchoredByRole": "buyer",
       "listingRef": {
         "listingId": "listing-dacs-verify-l3-rep-abort-other",
         "version": 1,
@@ -304,7 +309,7 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "7TItIQfZqgD7KgG31d1GlKeRBgmhCMP0q6t2s8Z2mnnZioxwBuEZv5lsQ-RMPDkCE-sPbwGeyL5GWKyNpuY_Bg"
+          "value": "xvzG0ZDdu8CKg-muMMW5zcTL3ki-SYDH38h0-y_Om-DmvUZYhYMN6GErw4UOQ0yQvanzbicj3yL24B_jjh_DBw"
         }
       ]
     },
@@ -312,6 +317,7 @@
       "bundleVersion": "1",
       "jobId": "DACS-VERIFY-L3-REP-OUTSIDE",
       "outcome": "completed",
+      "anchoredByRole": "buyer",
       "listingRef": {
         "listingId": "listing-dacs-verify-l3-rep-outside",
         "version": 1,
@@ -361,12 +367,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "62cG5LSCYSHkcXsgFRmztcsMOMEmJErr9hujmHZhA-j57oXzldcQz7WBgmY0pR_xe5FZNLDUPqXGpR9BXWhkAw"
+          "value": "fn8hiu7AqmTkGwhar6IVmcHtd-Xie27gYXNko8nTod4xtMGUb4inBRhLgmtmsUCD6Isc-vpCBH6fJYEPSFROBA"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "uiAuowxXIhVAfsri4VVz1nl2cTTLdbEV4OnLGgcccDatzLSqBU5IuUUHTGKclqGt8LU8Z2cSVNPzVpjGrN3DAA"
+          "value": "zuAFyNVYswo31BJ0IHE4GjLuPdbAwVs81MiyWHAC-9qxyB91xnPZpURgy47rretKkQgz5Nf2hiovYj8SF5jLBQ"
         }
       ]
     }

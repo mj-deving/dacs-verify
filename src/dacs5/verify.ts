@@ -4,11 +4,14 @@ import type { PriceTerm } from "../dacs4/settlement.ts";
 import {
   bundleHash,
   verifyBundle,
+  type AgreementPriceResolver,
+  type AnchoredByRole,
   type AttestationBundle,
   type AttestationRef,
   type BundleDecision,
   type BundleKeyResolver,
   type BundleOutcome,
+  type RatingResolver,
 } from "./bundle.ts";
 
 export type BundleFetch = (storAddress: string) => AttestationBundle | null | undefined;
@@ -36,6 +39,7 @@ export type SessionState =
   | "commit-failed"
   | "settle-pending"
   | "settle-completed"
+  | "settle-asymmetric"
   | "settle-failed"
   | "rate-pending"
   | "rate-completed"
@@ -61,13 +65,6 @@ export type ErrorClass =
   | "counterparty"
   | "substrate"
   | "settlement-atomicity";
-
-// §10.4.2/§10.5.1: a bundle paired with the party that ANCHORED it (its two-sided role-address). Reputation for a
-// party is derived over the bundles that party anchored — the bundle's outcome is recorded from the anchorer's view.
-export interface AnchoredBundle {
-  bundle: AttestationBundle;
-  anchoredBy: ClaimReference;
-}
 
 export interface ReputationDerivation {
   derivationVersion: "1";
@@ -96,7 +93,12 @@ const LEGAL_TRANSITIONS: ReadonlyMap<SessionState, ReadonlySet<SessionState>> = 
   ["negotiate-completed", transitionSet(["commit-pending"])],
   ["commit-pending", transitionSet(["commit-completed", "commit-failed", "substrate-failure-paused", "aborted-by-self", "aborted-by-other"])],
   ["commit-completed", transitionSet(["settle-pending"])],
-  ["settle-pending", transitionSet(["settle-completed", "settle-failed", "substrate-failure-paused", "aborted-by-self", "aborted-by-other"])],
+  // §10.3.1 ST-8 (R4-A): settle-pending may enter the non-terminal `settle-asymmetric` on the HTLC-9
+  // dest-revealed-source-unclaimed condition (in addition to the prior settle-completed/-failed/abort/pause edges).
+  ["settle-pending", transitionSet(["settle-completed", "settle-asymmetric", "settle-failed", "substrate-failure-paused", "aborted-by-self", "aborted-by-other"])],
+  // §10.3.1 ST-8: from settle-asymmetric, an htlc-claim within the expiry_source window resolves forward to
+  // settle-completed (terminal `completed`); window expiry goes to settle-failed (terminal `failed-counterparty`).
+  ["settle-asymmetric", transitionSet(["settle-completed", "settle-failed"])],
   ["settle-completed", transitionSet(["rate-pending", "finalised"])],
   ["rate-pending", transitionSet(["rate-completed", "finalised"])],
   ["rate-completed", transitionSet(["finalised"])],
@@ -239,57 +241,117 @@ export function stateToOutcome(state: SessionState, errorClass?: ErrorClass): Bu
   }
 }
 
+export interface ReputationResolvers {
+  // §10.5.1 fetch_and_verify_rating: returns the verified RatingRecord, or null on unreadable/mismatched/invalid
+  // (the spec's "exclude" path). Signature + anchor verification live HERE; derive() does the binding/range/dedup.
+  resolveRating?: RatingResolver;
+  // §10.5.1 fetch_and_verify_agreement: returns the verified DACS-3 agreement price, or null to exclude that bundle.
+  resolveAgreement?: AgreementPriceResolver;
+}
+
+// §10.5.1 perspective_flip — re-interpret a counterparty-anchored bundle's `outcome` relative to the SCORED party.
+// completed / failed-substrate are perspective-invariant; the abort and perm/counterparty faults swap so the
+// aborter/at-fault party takes the hit and the victim does not (the §10.11 guarantee R4-B restored).
+function perspectiveFlip(o: BundleOutcome): BundleOutcome {
+  switch (o) {
+    case "aborted-by-self":
+      return "aborted-by-other";
+    case "aborted-by-other":
+      return "aborted-by-self";
+    case "failed-perm":
+      return "failed-counterparty";
+    case "failed-counterparty":
+      return "failed-perm";
+    case "completed":
+      return "completed";
+    case "failed-substrate":
+      return "failed-substrate";
+  }
+}
+
 export function deriveReputation(
   party: ClaimReference,
-  anchored: AnchoredBundle[],
+  resolvePartyRole: (jobId: string) => AnchoredByRole | undefined,
+  bundles: AttestationBundle[],
   windowStart: number,
   windowEnd: number,
   computedAt: number,
+  resolvers: ReputationResolvers = {},
 ): ReputationDerivation {
-  // CONTRACT: `anchored` are the scored party's VERIFIED, consume-produced session bundles. Verification is the
-  // §10.4.3 consumption boundary (consumeBundles gates on verifyBundle "pass"); §10.5.1 derive() operates on already-
-  // verified bundles and is the METRIC boundary — it does not re-verify (that would diverge from the spec algorithm
-  // and duplicate the consume gate). WINDOW: §10.5.1 (L3217) filters on `b.finalisedAt` — the spec-mandated field; an
-  // anchor-time / anti-backdating window is a steward-facing spec question, not a verifier deviation (see ISA Decisions).
-  // §10.5.1 (L3298): `scoped` restricts to bundles ANCHORED BY the scored party — the outcome (incl. aborted-by-self
-  // vs aborted-by-other) is recorded from the anchoring party's perspective (§10.4.3/§10.11), NOT every bundle the
-  // party merely appears in. Inclusive finalisedAt window. Dedupe by jobId so one session counts once even if both
-  // two-sided copies are passed (the §10.4.3(c) unified case would otherwise double-count).
-  const seen = new Set<string>();
+  // §10.5.1 derive(party, bundles, windowStart, windowEnd). CONTRACT: `bundles` are VERIFIED, consume-produced session
+  // bundles — verification is the §10.4.3 consumption boundary (consumeBundles gates on verifyBundle "pass"); derive()
+  // is the METRIC boundary and does not re-verify. `resolvePartyRole(jobId)` is the EXTERNALLY-KNOWN role the scored
+  // party plays in THAT session (buyer/seller) — the consumer always knows it from the audited session/agreement, exactly
+  // as consumeBundles takes `expected`. It is PER-JOB on purpose: a party can be the buyer in some sessions and the seller
+  // in others within one window, so a single derivation-wide role would misread the off-role sessions. The spec algorithm
+  // reads role_of_party from copies[0].parties, but those labels are producer-signed and UNTRUSTED (§10.4.2/§10.11): a
+  // verified-but-relabelled bundle could otherwise misname the party's role, miss its self_copy, and perspective_flip its
+  // own outcome — inverting abort attribution. So role comes from `resolvePartyRole`, not the bundle. A job whose role the
+  // consumer does not supply (undefined) is not in the audited set → skipped. (`anchoredByRole` is trusted here per the
+  // §10.4.2 contract that it matches the role-derived anchor address, validated when fetched two-sided; ISA steward-Q.)
+  // WINDOW: inclusive `finalisedAt` filter. SCOPED: every bundle the party is a PARTY to (NOT only the ones it anchored —
+  // that pre-R4-B narrowing was the defect). Two-sided anchoring (§10.4.2) can place TWO copies of one jobId in the input,
+  // each recording `outcome` from ITS anchorer's perspective; the per-jobId reconciliation below collapses to one
+  // authoritative, perspective-adjusted outcome per jobId so an abort is counted once and attributed to the aborter.
   const scoped: AttestationBundle[] = [];
-  for (const a of anchored) {
-    if (a.anchoredBy !== party) continue;
-    const b = a.bundle;
+  for (const b of bundles) {
+    if (!b.parties.some((p) => p.primaryClaim === party)) continue;
     if (b.finalisedAt < windowStart || b.finalisedAt > windowEnd) continue;
-    if (seen.has(b.jobId)) continue;
-    seen.add(b.jobId);
     scoped.push(b);
   }
 
-  const completed = countOutcome(scoped, "completed");
-  const failedCounterparty = countOutcome(scoped, "failed-counterparty");
-  const failedSubstrate = countOutcome(scoped, "failed-substrate");
-  const abortedByOther = countOutcome(scoped, "aborted-by-other");
-  const partyFaultDenom = scoped.length - failedSubstrate;
+  // Per-jobId reconciliation (§10.5.1 L3242): one authoritative bundle + perspective-adjusted outcome per jobId.
+  const groups = new Map<string, AttestationBundle[]>();
+  for (const b of scoped) {
+    const g = groups.get(b.jobId);
+    if (g === undefined) groups.set(b.jobId, [b]);
+    else g.push(b);
+  }
+  const reconciled: AttestationBundle[] = [];
+  const outcomes: BundleOutcome[] = [];
+  for (const copies of groups.values()) {
+    // role the scored party plays in THIS job, from the externally-known per-job binding (NOT self-declared parties).
+    const role = resolvePartyRole(copies[0]!.jobId);
+    if (role === undefined) continue; // job not in the consumer's audited set → not scored.
+    // self_copy = the party's OWN anchored copy for this job, identified by that trusted role.
+    const selfCopy = copies.find((b) => b.anchoredByRole === role);
+    if (selfCopy !== undefined) {
+      // The scored party's OWN anchored copy is present → `outcome` is read literally.
+      reconciled.push(selfCopy);
+      outcomes.push(selfCopy.outcome);
+    } else {
+      // Only a counterparty-anchored copy exists (e.g. §10.11 suppression) → re-interpret via perspective_flip.
+      const cp = copies[0]!;
+      reconciled.push(cp);
+      outcomes.push(perspectiveFlip(cp.outcome));
+    }
+  }
+
+  const completed = outcomes.filter((o) => o === "completed").length;
+  const failedCounterparty = outcomes.filter((o) => o === "failed-counterparty").length;
+  const failedSubstrate = outcomes.filter((o) => o === "failed-substrate").length;
+  const abortedByOther = outcomes.filter((o) => o === "aborted-by-other").length;
+  const partyFaultDenom = outcomes.length - failedSubstrate;
   const counterpartyFaultCount = abortedByOther + failedCounterparty;
 
-  // §10.5.1: RatingRecord and AgreementDocument resolution is out of L3 scope;
-  // ratings stay null and observedTransactionalVolume stays empty until supplied by a future resolver.
+  const { averageBuyerRating, averageSellerRating } = aggregateRatings(reconciled, party, resolvers.resolveRating);
+  const observedTransactionalVolume = aggregateVolume(reconciled, resolvers.resolveAgreement);
+
   return {
     derivationVersion: "1",
     partyPrimaryClaim: party,
     windowStart,
     windowEnd,
-    bundleCount: scoped.length,
+    bundleCount: reconciled.length,
     metrics: {
       completionRate: partyFaultDenom > 0 ? completed / partyFaultDenom : null,
       counterpartyDisputeRate: partyFaultDenom > 0 ? counterpartyFaultCount / partyFaultDenom : null,
-      averageBuyerRating: null,
-      averageSellerRating: null,
-      observedTransactionalVolume: [],
+      averageBuyerRating,
+      averageSellerRating,
+      observedTransactionalVolume,
     },
     computedAt,
-    bundleRefs: scoped.map((b) => ({
+    bundleRefs: reconciled.map((b) => ({
       kind: "dacs-5-bundle",
       id: b.jobId,
       contentHash: bundleHash(b),
@@ -297,6 +359,77 @@ export function deriveReputation(
   };
 }
 
-function countOutcome(bundles: AttestationBundle[], outcome: BundleOutcome): number {
-  return bundles.filter((b) => b.outcome === outcome).length;
+// §10.5.1 (L3285) + Rating de-duplication (L3344): walk each reconciled bundle's ratingRefs; bind each fetched record
+// to the session; aggregate AT MOST ONE rating per (rater, jobId, targetRole) — last-writer-wins by ratedAt — then
+// average only those whose target is the scored party, split by targetRole. Null (no signal) when none qualify.
+function aggregateRatings(
+  reconciled: AttestationBundle[],
+  party: ClaimReference,
+  resolveRating: RatingResolver | undefined,
+): { averageBuyerRating: number | null; averageSellerRating: number | null } {
+  if (resolveRating === undefined) return { averageBuyerRating: null, averageSellerRating: null };
+  const deduped = new Map<string, { value: number; target: ClaimReference; targetRole: "buyer" | "seller"; ratedAt: number }>();
+  for (const b of reconciled) {
+    const parties = new Set(b.parties.map((p) => p.primaryClaim));
+    for (const ratingRef of b.ratingRefs ?? []) {
+      const r = resolveRating(ratingRef);
+      if (r === null) continue;                                   // fetch_and_verify failed → exclude
+      if (r.jobId !== b.jobId) continue;                          // not this session
+      if (!Number.isInteger(r.value) || r.value < 1 || r.value > 5) continue; // RT-2: out-of-range excluded
+      if (!parties.has(r.rater)) continue;                        // rater was not a party here
+      if (r.rater === party) continue;                            // no self-rating toward one's own score
+      const key = JSON.stringify([r.rater, r.jobId, r.targetRole]);
+      const prior = deduped.get(key);
+      if (prior === undefined || r.ratedAt >= prior.ratedAt) {    // last-writer-wins by ratedAt (ties: later wins)
+        deduped.set(key, { value: r.value, target: r.target, targetRole: r.targetRole, ratedAt: r.ratedAt });
+      }
+    }
+  }
+  const seller: number[] = [];
+  const buyer: number[] = [];
+  for (const r of deduped.values()) {
+    if (r.target !== party) continue;
+    if (r.targetRole === "seller") seller.push(r.value);
+    else buyer.push(r.value);
+  }
+  return {
+    averageSellerRating: seller.length > 0 ? seller.reduce((a, v) => a + v, 0) / seller.length : null,
+    averageBuyerRating: buyer.length > 0 ? buyer.reduce((a, v) => a + v, 0) / buyer.length : null,
+  };
+}
+
+// §10.5.1 (L3327): sum agreement.terms.price by currency over reconciled bundles whose agreementRef resolves. The
+// DACS-3 fetch+hash-verify+parse lives in the injected resolver (caller-supplied / L4 DACS-3 verifier); a null result
+// excludes that bundle. Without a resolver, volume is empty (no signal). Amounts are CD-1 canonical decimals.
+function aggregateVolume(reconciled: AttestationBundle[], resolveAgreement: AgreementPriceResolver | undefined): { amount: string; currency: string }[] {
+  if (resolveAgreement === undefined) return [];
+  const byCurrency = new Map<string, bigint>();   // currency → summed value scaled to SCALE fractional digits
+  const order: string[] = [];
+  for (const b of reconciled) {
+    if (b.agreementRef === undefined) continue;
+    const price = resolveAgreement(b.agreementRef);
+    if (price === null) continue;
+    const scaled = scaleDecimal(price.amount);
+    if (scaled === null) continue;                  // unparseable amount → exclude
+    if (!byCurrency.has(price.currency)) order.push(price.currency);
+    byCurrency.set(price.currency, (byCurrency.get(price.currency) ?? 0n) + scaled);
+  }
+  return order.map((currency) => ({ amount: unscaleDecimal(byCurrency.get(currency)!), currency }));
+}
+
+// Fixed-scale decimal arithmetic for volume summation. SCALE digits of fraction is ample for on-chain asset amounts
+// (18-decimal ERC-20s included); inputs are CD-1 canonical (no sign/exponent), so parsing is a split on ".".
+const VOLUME_SCALE = 18;
+function scaleDecimal(amount: string): bigint | null {
+  if (!/^\d+(\.\d+)?$/.test(amount)) return null;
+  const [intPart, fracPart = ""] = amount.split(".");
+  if (fracPart.length > VOLUME_SCALE) return null; // more precision than we track → refuse rather than truncate
+  const padded = fracPart.padEnd(VOLUME_SCALE, "0");
+  return BigInt(intPart! + padded);
+}
+function unscaleDecimal(scaled: bigint): string {
+  const s = scaled.toString().padStart(VOLUME_SCALE + 1, "0");
+  const intPart = s.slice(0, s.length - VOLUME_SCALE);
+  const fracPart = s.slice(s.length - VOLUME_SCALE).replace(/0+$/, "");
+  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
 }

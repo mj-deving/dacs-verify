@@ -27,10 +27,16 @@ export interface ChainTxRef {
   kind?: string;
 }
 
+// §10.4 (L3085): the role of the party that anchored THIS copy. `outcome` is recorded from this party's
+// perspective and the value matches the §10.4.2 role-derived anchor address. REQUIRED + signed (inside the
+// bundle hash) — added in the Round-4 R4-B fix so §10.5.1 derive() can reconcile two-sided copies per-jobId.
+export type AnchoredByRole = "buyer" | "seller" | "orchestrator";
+
 export interface AttestationBundle {
   bundleVersion: "1";
   jobId: string;
   outcome: BundleOutcome;
+  anchoredByRole: AnchoredByRole;
   listingRef: { listingId: string; version: number; contentHash: string };
   agreementRef?: AttestationRef;
   parties: BundleParty[];
@@ -68,6 +74,30 @@ export interface BundleSignature {
 
 export type BundleKeyResolver = (party: ClaimReference) => Uint8Array | null | undefined;
 
+// §10.6 (L3389) RatingRecord — the rate-phase artifact referenced from a bundle's `ratingRefs`. §10.5.1 derive()
+// aggregates these (with de-duplication) into averageBuyerRating / averageSellerRating. The deriver reads jobId,
+// rater, target, targetRole, value, ratedAt; the SIGNATURE is verified by the injected fetch_and_verify resolver
+// (the §10.5.1 `fetch_and_verify_rating` call), not by derive() itself — mirroring the spec's injection style.
+export interface RatingRecord {
+  ratingVersion: "1";
+  jobId: string;
+  rater: ClaimReference;
+  target: ClaimReference;
+  targetRole: "buyer" | "seller";
+  value: number;
+  freeText?: string;
+  dimensions?: Record<string, number>;
+  ratedAt: number;
+  signature: { algorithm: "ed25519" | "ecdsa-secp256k1" | "sr1-aggregate"; signer: ClaimReference; value: string };
+}
+
+// §10.5.1 injected resolvers (the spec's `fetch_and_verify_*` calls). Each returns the verified artifact, or null
+// when the anchor is unreadable / contentHash-mismatched / signature-invalid (the spec's "exclude that bundle/rating"
+// path). The crypto + anchor resolution lives in the resolver (caller-supplied); derive() does the spec's binding,
+// range, de-dup, and grouping logic. When a resolver is absent, that metric stays null/empty (no signal).
+export type RatingResolver = (ref: AttestationRef) => RatingRecord | null;
+export type AgreementPriceResolver = (ref: AttestationRef) => { amount: string; currency: string } | null;
+
 const TERMINAL_REQUIRED_OUTCOMES: ReadonlySet<BundleOutcome> = new Set([
   "completed",
   "failed-perm",
@@ -86,6 +116,7 @@ const ALLOWED_OUTCOMES: ReadonlySet<string> = new Set([
 
 const HASH_RE = /^[0-9a-f]{64}$/;
 const PARTY_ROLES: ReadonlySet<string> = new Set(["buyer", "seller", "orchestrator"]);
+const ANCHORED_BY_ROLES: ReadonlySet<string> = new Set(["buyer", "seller", "orchestrator"]);
 const PHASE_OUTCOMES: ReadonlySet<string> = new Set(["ok", "fail"]);
 const ERROR_CLASSES: ReadonlySet<string> = new Set(["permanent", "transient", "counterparty", "substrate", "settlement-atomicity"]);
 const SIGNATURE_ALGORITHMS: ReadonlySet<string> = new Set(["ed25519", "ecdsa-secp256k1", "sr1-aggregate"]);
@@ -164,6 +195,9 @@ function requiredSignerClaims(parties: BundleParty[]): Set<ClaimReference> | nul
 function isStructurallySupported(bundle: AttestationBundle): boolean {
   if (bundle.bundleVersion !== "1") return false;
   if (!ALLOWED_OUTCOMES.has(bundle.outcome)) return false;
+  // §10.4 (L3085): anchoredByRole is REQUIRED and one of the three roles. A bundle missing it (a pre-R4-B
+  // producer) or carrying a bad value is structurally unsupported — derive()'s reconciliation depends on it.
+  if (!ANCHORED_BY_ROLES.has(bundle.anchoredByRole)) return false;
   if (typeof bundle.jobId !== "string" || bundle.jobId.length === 0) return false;
   if (!bundle.listingRef || typeof bundle.listingRef.listingId !== "string") return false;
   if (!Number.isSafeInteger(bundle.listingRef.version)) return false;
