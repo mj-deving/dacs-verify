@@ -1,7 +1,7 @@
 {
   "dacsXVersion": "1",
   "disputeId": "dispute-0001",
-  "disputeRecordHash": "d3ad8686d6d719f262ffd7d8c429cdfbe9209dc0b10cdcbb1c3473f8ad1661dd",
+  "disputeRecordHash": "7b9287a34586bf4c90c166c657dc6cab09e3752c112bc34a078cebef365884e4",
   "arbitrator": "did:arbitrator:acme-court",
   "remedy": {
     "kind": "refund-ordered",
@@ -9,5 +9,5 @@
     "asset": "usdc"
   },
   "decidedAt": 1780003600000,
-  "signature": "T4XDj-3zaBGCqfgYTLYHIfgfaxXKlAmz1tP0Gw2HOZ4SNVDQTo_PKWIvRWMqqSXow2BC8-uSyyplpqD5IPzpAg"
+  "signature": "Eq5XBnu1BNTc4A_IcHyz-K9iC4pkjUYopy-PsTyZagWg5Ea5YA6zBxnJGSjqihoaXco5iz1df9_Lewtckva0CA"
 }

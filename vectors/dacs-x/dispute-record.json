@@ -1,11 +1,15 @@
 {
   "dacsXVersion": "1",
   "disputeId": "dispute-0001",
-  "initiator": "did:demos:buyer-0EqyMnQr",
+  "initiator": "did:demos:buyer",
   "disputed": [
     {
-      "jobId": "job-7f3c-divergent",
-      "bundleHash": "33489e630b56e997f15c7b285c12d9193f911bfdc07b897bf30a0c846f805e48"
+      "jobId": "DACS-VERIFY-0004",
+      "bundleHash": "eb59bd1e687df6e1e241d8c143cbf5d11535f903658afc5cb593e8461da4f1fb"
+    },
+    {
+      "jobId": "DACS-VERIFY-0004",
+      "bundleHash": "bd7fdf704bbcfb82928172180c8a7285e3c66cc996c0587ef7a79e0082d43342"
     }
   ],
   "contestedClaim": "divergent-bundle",
@@ -14,5 +18,5 @@
     "ruleRef": "05fcf97fbd69163f5f2ccb71fa95249027cda062641e68b161efdbf6fd7a910e"
   },
   "openedAt": 1780000000000,
-  "signature": "fMjDywv_QE2Pq3UOBeBxyjHfCUSnnAC4ZlXMsr7oIJTNbG8cgWBkcFjcGGBW2T53GuYqO63pP6nBRKeIGZpwBg"
+  "signature": "OFkZRbH09U44Urjwlz8sA1ykZFQCg5Kaf1dBUvomhH5Nl3491D7iYuOxwQXHCv-T84FZSwwXVywWqOronQcmAQ"
 }

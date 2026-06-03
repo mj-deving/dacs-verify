@@ -14,8 +14,64 @@
     "logical": "dacs1:lei:984500ABCDEF12345678:fx-rfq-eur-usd:v1",
     "native": "stor-ac8d9a32ced4223d0022fba37beb05754c7c695e1599175178a543ff72302f96"
   },
+  "bundle": {
+    "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
+    "fixture": "conformance/fixtures/attestation-bundle-0004.json",
+    "jobId": "DACS-VERIFY-0004",
+    "bundleHash": "eb59bd1e687df6e1e241d8c143cbf5d11535f903658afc5cb593e8461da4f1fb",
+    "decisions": {
+      "pass": "pass",
+      "requiredSignerReject": "fail",
+      "malformedKey": "error"
+    },
+    "seeds": {
+      "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "seller": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+    },
+    "publicKeys": {
+      "did:demos:buyer": "vHy8tWNjdfodgkNNRmck2SN39TuYBpXdSdJtDOEiBaU",
+      "did:demos:seller": "1AS8RFZa7buJkVDlsLOzK5RBvwy3iEwzEw2o28J90s8"
+    },
+    "divergentSellerFixture": "conformance/fixtures/attestation-bundle-0004-seller.json",
+    "divergentSeller": {
+      "jobId": "DACS-VERIFY-0004",
+      "bundleHash": "bd7fdf704bbcfb82928172180c8a7285e3c66cc996c0587ef7a79e0082d43342",
+      "decision": "pass",
+      "outcome": "failed-counterparty"
+    },
+    "htlc9Fixture": "conformance/fixtures/attestation-bundle-htlc9.json",
+    "htlc9": {
+      "jobId": "DACS-VERIFY-HTLC9",
+      "bundleHash": "6cb31ccdf50c0ea4ada24f07f0b54c14bde6795e8e190683cdd1ecfcbdf205f2",
+      "decision": "pass",
+      "settlementPhase": {
+        "kind": "pay-cross-chain-htlc",
+        "outcome": "fail",
+        "errorClass": "settlement-atomicity",
+        "revealTxRef": "polygon-amoy:0xreveal9c1a-htlc-reveal"
+      }
+    }
+  },
   "dispute": {
-    "status": "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
+    "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
+    "bundleRef": {
+      "jobId": "DACS-VERIFY-0004",
+      "bundleHash": "eb59bd1e687df6e1e241d8c143cbf5d11535f903658afc5cb593e8461da4f1fb"
+    },
+    "divergentBundleRefs": [
+      {
+        "jobId": "DACS-VERIFY-0004",
+        "bundleHash": "eb59bd1e687df6e1e241d8c143cbf5d11535f903658afc5cb593e8461da4f1fb"
+      },
+      {
+        "jobId": "DACS-VERIFY-0004",
+        "bundleHash": "bd7fdf704bbcfb82928172180c8a7285e3c66cc996c0587ef7a79e0082d43342"
+      }
+    ],
+    "htlc9BundleRef": {
+      "jobId": "DACS-VERIFY-HTLC9",
+      "bundleHash": "6cb31ccdf50c0ea4ada24f07f0b54c14bde6795e8e190683cdd1ecfcbdf205f2"
+    },
     "seeds": {
       "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
       "arbitrator": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
@@ -32,10 +88,24 @@
       "unknownBundle": "fail",
       "htlc9Correction": "pass"
     },
-    "inputs": "constructed deterministically in conformance/run.ts from the seeds above (no separate fixture files); re-run `bun conformance/run.ts` to regenerate"
+    "inputs": "constructed deterministically in conformance/run.ts from the seeds above; divergent-bundle refs point to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json; HTLC-9 correction ref points to conformance/fixtures/attestation-bundle-htlc9.json"
   },
   "disclosure": {
-    "status": "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
+    "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
+    "bundleRef": {
+      "jobId": "DACS-VERIFY-0004",
+      "bundleHash": "eb59bd1e687df6e1e241d8c143cbf5d11535f903658afc5cb593e8461da4f1fb"
+    },
+    "divergentBundleRefs": [
+      {
+        "jobId": "DACS-VERIFY-0004",
+        "bundleHash": "eb59bd1e687df6e1e241d8c143cbf5d11535f903658afc5cb593e8461da4f1fb"
+      },
+      {
+        "jobId": "DACS-VERIFY-0004",
+        "bundleHash": "bd7fdf704bbcfb82928172180c8a7285e3c66cc996c0587ef7a79e0082d43342"
+      }
+    ],
     "seeds": {
       "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
       "seller": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
@@ -54,6 +124,6 @@
       "malformedKey": "error",
       "transcriptUnsigned": "fail"
     },
-    "inputs": "constructed deterministically in conformance/run.ts from the seeds above; re-run to regenerate"
+    "inputs": "constructed deterministically in conformance/run.ts from the seeds above; dispute record points to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json"
   }
 }

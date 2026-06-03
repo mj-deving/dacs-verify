@@ -73,11 +73,28 @@ export function verifyDisputeRecord(
 
   if (record.disputed.length === 0) return { ok: false, reason: "dispute references no bundle" };
   for (const ref of record.disputed) {
-    const known = knownBundles.find((b) => b.jobId === ref.jobId);
-    if (!known) return { ok: false, reason: `unknown jobId in dispute: ${ref.jobId}` };
-    if (known.bundleHash !== ref.bundleHash) {
+    const knownJob = knownBundles.some((b) => b.jobId === ref.jobId);
+    if (!knownJob) return { ok: false, reason: `unknown jobId in dispute: ${ref.jobId}` };
+    const knownPair = knownBundles.some((b) => b.jobId === ref.jobId && b.bundleHash === ref.bundleHash);
+    if (!knownPair) {
       return { ok: false, reason: `bundle hash mismatch for ${ref.jobId} — dispute pinned to a different bundle` };
     }
+  }
+  const contestedShape = validateContestedClaimShape(record);
+  if (!contestedShape.ok) return contestedShape;
+  return { ok: true };
+}
+
+function validateContestedClaimShape(record: DisputeRecord): DisputeCheck {
+  if (record.contestedClaim !== "divergent-bundle") return { ok: true };
+  if (record.disputed.length < 2) {
+    return { ok: false, reason: "divergent-bundle dispute requires at least two bundle refs" };
+  }
+  if (new Set(record.disputed.map((ref) => ref.jobId)).size !== 1) {
+    return { ok: false, reason: "divergent-bundle dispute refs must share one jobId" };
+  }
+  if (new Set(record.disputed.map((ref) => ref.bundleHash)).size < 2) {
+    return { ok: false, reason: "divergent-bundle dispute refs must carry different bundle hashes" };
   }
   return { ok: true };
 }

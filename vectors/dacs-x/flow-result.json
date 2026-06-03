@@ -15,10 +15,10 @@
     }
   ],
   "reweighted": {
-    "jobId": "job-7f3c-divergent",
+    "jobId": "DACS-VERIFY-0004",
     "priorWeight": 1,
     "effectiveWeight": 0,
     "adjudicated": true,
-    "adjudicatedBy": "1e4c8e257d58c9804142bcecb62475be633e16c29479ca18209e02fcd3642182"
+    "adjudicatedBy": "2fface299c7b0c6a3fb8688cddb9b666fe485e8809b974a0bbfd5e0e082f4313"
   }
 }

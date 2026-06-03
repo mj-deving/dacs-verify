@@ -3,8 +3,8 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "24 vectors — byte-stable AND reference-verifier-accepted; no two conformant impls can disagree (§7.1 canonicalization, §14.4 decimals, §7.7 signing, §6.3 identity).",
-    "candidate": "18 vectors — single-impl (§11.2.1 dispute + §8.7 disclosure). PATH-OS's unmodified DACS-5 verify-bundle returns §7.5.1 indeterminate on the minimal dispute fixtures (it consumes a full §10.4 AttestationBundle); cross-impl agreement is pending the shared fixture in interface-issue #99 (DACS-VERIFY-0004)."
+    "golden": "46 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure; byte-stable and reference-verifier-accepted.",
+    "candidate": "0 vectors."
   },
   "cases": [
     {
@@ -13,6 +13,7 @@
       "spec": "§7.1",
       "summary": "object members ordered by UTF-16 code unit of key",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "{\"A\":3,\"a\":2,\"b\":1}"
     },
     {
@@ -21,6 +22,7 @@
       "spec": "§7.1",
       "summary": "nested objects sorted; array order preserved",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "{\"a\":{\"x\":2,\"y\":1},\"z\":[3,1,2]}"
     },
     {
@@ -29,6 +31,7 @@
       "spec": "§7.1",
       "summary": "only JCS-required escapes are applied",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "\"a\\\"b\\\\c\\n\\t\""
     },
     {
@@ -37,6 +40,7 @@
       "spec": "§7.1",
       "summary": "forward slash and non-ASCII are not escaped",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "\"a/bé\""
     },
     {
@@ -45,6 +49,7 @@
       "spec": "§7.1",
       "summary": "safe integers serialise as plain decimals",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "9007199254740991"
     },
     {
@@ -53,6 +58,7 @@
       "spec": "§7.1",
       "summary": "non-integer numbers are rejected",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "throws"
     },
     {
@@ -61,6 +67,7 @@
       "spec": "§7.2",
       "summary": "the signed scope excludes the signature field",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "{\"a\":1}"
     },
     {
@@ -69,6 +76,7 @@
       "spec": "§14.4",
       "summary": "1.50 / 01.5 / 1.500 all canonicalise to 1.5",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": [
         "1.5",
         "1.5",
@@ -81,6 +89,7 @@
       "spec": "§14.4",
       "summary": "0.0 → 0 ; .5 → 0.5 ; 0.50 → 0.5",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": [
         "0",
         "0.5",
@@ -93,6 +102,7 @@
       "spec": "§14.4",
       "summary": "exponent / sign-plus / non-numeric are rejected",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": [
         "throws",
         "throws",
@@ -105,6 +115,7 @@
       "spec": "§14.4",
       "summary": "economically-equal amounts share a content hash; raw strings do not",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": {
         "canonicalEqual": true,
         "rawDiffers": true
@@ -116,6 +127,7 @@
       "spec": "§9.3",
       "summary": "amount MUST be > 0",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "throws"
     },
     {
@@ -124,6 +136,7 @@
       "spec": "§7.7",
       "summary": "a dacs-1-listing signature verifies under its own separator",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": {
         "ok": true,
         "separator": "dacs-listing:v1:"
@@ -135,6 +148,7 @@
       "spec": "§7.7",
       "summary": "mutating the signed scope breaks verification",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": false
     },
     {
@@ -143,6 +157,7 @@
       "spec": "§7.7",
       "summary": "SIG-2: a listing signature does not verify as a bundle signature",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": false
     },
     {
@@ -151,6 +166,7 @@
       "spec": "§7.7",
       "summary": "the domain-separator registry is the closed set of 16",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": 16
     },
     {
@@ -159,6 +175,7 @@
       "spec": "§7.7",
       "summary": "SIG-4: DACS-X separators are dacs-x-* and disjoint from the §7.7 registry",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": true
     },
     {
@@ -167,6 +184,7 @@
       "spec": "§6.3.3",
       "summary": "OBSERVATION DACS-VERIFY-0001 (adjacent issue #42): a cci-lei: claim does NOT satisfy a bare lei requirement",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": false
     },
     {
@@ -175,6 +193,7 @@
       "spec": "§6.3.1",
       "summary": "0001 is naming-only: cci-lei: satisfies a cci-lei requirement",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": true
     },
     {
@@ -183,6 +202,7 @@
       "spec": "§6.3.3",
       "summary": "step 3b: an unverified presentedBy claim is rejected even if another verified claim satisfies the requirement",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": false
     },
     {
@@ -191,6 +211,7 @@
       "spec": "§6.3.4",
       "summary": "an intake-only listing (no pay phase) may omit acceptedRails",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": true
     },
     {
@@ -199,6 +220,7 @@
       "spec": "§6.3.4",
       "summary": "step 8: a pay-* phase without acceptedRails fails",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": {
         "ok": false,
         "failedAt": "accepted-rails-conditional"
@@ -210,6 +232,7 @@
       "spec": "§6.3.4",
       "summary": "an expired validity window is rejected",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": {
         "ok": false,
         "failedAt": "validity-window"
@@ -221,17 +244,61 @@
       "spec": "§6.3.4",
       "summary": "OBSERVATION DACS-VERIFY-0003: spec rule yields stor-<64hex> (Demos uses stor-<40hex>; verify on substrate before relying)",
       "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": {
         "shape64": true,
         "notLen40": true
       }
     },
     {
+      "id": "bundle-0004-pass",
+      "area": "bundle",
+      "spec": "§10.4",
+      "summary": "DACS-VERIFY-0004 completed AttestationBundle verifies with buyer + seller signatures",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
+      "want": "pass"
+    },
+    {
+      "id": "bundle-htlc9-pass",
+      "area": "bundle",
+      "spec": "§10.4",
+      "summary": "HTLC-9 AttestationBundle verifies and carries settlement-atomicity failure + destination reveal txRef",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
+      "want": {
+        "decision": "pass",
+        "outcome": "failed-substrate",
+        "phaseOutcome": "fail",
+        "errorClass": "settlement-atomicity",
+        "revealRecorded": true
+      }
+    },
+    {
+      "id": "bundle-required-signer-fail",
+      "area": "bundle",
+      "spec": "§10.4.1",
+      "summary": "completed bundle missing a required seller signature → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "bundle-malformed-key-error",
+      "area": "bundle",
+      "spec": "§10.4.1",
+      "summary": "wrong-length resolved public key → ERROR, not a false-negative FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
+      "want": "error"
+    },
+    {
       "id": "dispute-happy-pass",
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "consistent dispute → PASS, disputed contribution reweighted to 0 (prior preserved)",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": {
         "decision": "pass",
         "effectiveWeight": 0,
@@ -243,7 +310,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "an open dispute with no outcome yet → INDETERMINATE",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "indeterminate"
     },
     {
@@ -251,7 +319,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "a dispute-record verified against the wrong key → FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -259,7 +328,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "an unparseable (non-32-byte) key → ERROR, not a false-negative FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "error"
     },
     {
@@ -267,7 +337,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "a post-hoc arbitration-rule swap (rule-ref mismatch) → FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -275,7 +346,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "an outcome signed by the wrong key → FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -283,7 +355,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "an outcome with a non-CD-1 refund amount → FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -291,7 +364,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "a dispute pinned to an unknown bundle → FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -299,7 +373,8 @@
       "area": "dispute",
       "spec": "§11.2.1",
       "summary": "HTLC-9 asymmetric settlement closes via a correction amendment → PASS, contribution voided (never a refund)",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": {
         "decision": "pass",
         "effectiveWeight": 0
@@ -310,7 +385,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "all channel members co-sign → transcript disclosure to the named arbitrator authorized",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "pass"
     },
     {
@@ -318,7 +394,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "the credentialed arbitrator orders disclosure → authorized",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "pass"
     },
     {
@@ -326,7 +403,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "DP-1 named-arbitrator-only: a recipient not in the agreed arbitrator allow-set → FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -334,7 +412,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "DP-1 anti-swap: an agreed rule whose hash ≠ the record's pinned ruleRef → FAIL (can't swap in a rule naming an attacker's recipient)",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -342,7 +421,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "a grant pinning a different transcript hash → FAIL (the disclosed transcript can't be swapped)",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -350,7 +430,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "party-agreement missing a member's consent → FAIL (full consent required)",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -358,7 +439,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "a grant not bound to the DisputeRecord → FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     },
     {
@@ -366,7 +448,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "a non-32-byte member key → ERROR, not a false-negative FAIL",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "error"
     },
     {
@@ -374,7 +457,8 @@
       "area": "disclosure",
       "spec": "§8.7",
       "summary": "a transcript with an unverifiable member signature → FAIL (authenticity)",
-      "status": "candidate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": "fail"
     }
   ]

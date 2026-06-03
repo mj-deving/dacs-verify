@@ -10,15 +10,12 @@
  * so each run is byte-stable. No private key material is stored; seeds are
  * public test material.
  *
- *   bun conformance/run.ts          run all vectors (24 golden primitives + candidate dispute/disclosure)
+ *   bun conformance/run.ts          run all vectors
  *   bun conformance/run.ts --emit   (re)write MANIFEST.json + vectors/golden.json
  *
- * Two surfaces: GOLDEN (§7.1/§14.4/§7.7/§6.3) is byte-stable AND reference-verifier-
- * accepted — no two conformant impls can disagree. CANDIDATE (§11.2.1 dispute + §8.7
- * disclosure) is single-impl: PATH-OS's unmodified verify-bundle returns §7.5.1
- * indeterminate on the minimal dispute fixtures (it consumes a full §10.4
- * AttestationBundle), so cross-impl agreement is pending the shared fixture in
- * interface-issue #99 (DACS-VERIFY-0004). Candidate vectors are labelled as such.
+ * Golden surface: 24 primitive checks + one §10.4 bundle area (4 checks) + 18
+ * dispute / disclosure checks, all byte-stable and accepted by this reference
+ * verifier.
  *
  * An external implementer can read MANIFEST.json (the case index) and
  * vectors/golden.json (the pinned outputs), point their own DACS verifier at the
@@ -62,15 +59,33 @@ import {
   type DisclosureAuthority,
   type DisclosureInput,
 } from "../src/dacsx/index.ts";
+import { verifyBundle } from "../src/dacs5/index.ts";
 import { keypairFromSeed, signArtifact, type Keypair } from "../examples/issuer-kit.ts";
+import {
+  ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF,
+  buildAttestationBundle0004,
+  buildAttestationBundle0004Seller,
+  buildAttestationBundleHtlc9,
+} from "../examples/attestation-bundle-0004.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EMIT = process.argv.includes("--emit");
 
-// Areas whose vectors are single-impl candidates (cross-impl agreement pending #99),
-// distinguished from the reference-accepted golden primitive surface.
-const CANDIDATE_AREAS = new Set(["dispute", "disclosure"]);
-const statusOf = (area: string): "golden" | "candidate" => (CANDIDATE_AREAS.has(area) ? "candidate" : "golden");
+const statusOf = (_area: string): "golden" => "golden";
+const reasonOf = (area: string): string =>
+  area === "bundle" || area === "dispute" || area === "disclosure"
+    ? "reference-verifier-accepted (verifyBundle) + byte-stable"
+    : "reference-verifier-accepted + byte-stable";
+
+const bundle0004 = buildAttestationBundle0004();
+const bundle0004Seller = buildAttestationBundle0004Seller();
+const bundleHtlc9 = buildAttestationBundleHtlc9();
+const bundle0004Keys: Record<ClaimReference, Uint8Array> = Object.fromEntries(
+  Object.entries(bundle0004.publicKeys).map(([claim, key]) => [claim, new Uint8Array(Buffer.from(key, "base64url"))]),
+) as Record<ClaimReference, Uint8Array>;
+const bundleHtlc9Keys: Record<ClaimReference, Uint8Array> = Object.fromEntries(
+  Object.entries(bundleHtlc9.publicKeys).map(([claim, key]) => [claim, new Uint8Array(Buffer.from(key, "base64url"))]),
+) as Record<ClaimReference, Uint8Array>;
 
 // ── tiny harness ─────────────────────────────────────────────────────────────
 type Case = { id: string; area: string; spec: string; summary: string; got: unknown; want: unknown };
@@ -207,21 +222,78 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   golden["addressing"] = { logical, native };
 }
 
-// ── §11.2.1 — DACS-X dispute flow (4-value decision) — CANDIDATE ─────────────
-// CANDIDATE, not cross-impl golden (DACS-VERIFY-0004): PATH-OS's unmodified DACS-5
-// verify-bundle returns §7.5.1 indeterminate on these minimal dispute fixtures (it
-// consumes a full §10.4 AttestationBundle). Cross-impl agreement is pending the
-// shared fixture in interface-issue #99. Inputs are constructed deterministically
-// below from public seeds — re-run to regenerate.
+// ── §10.4 — DACS-5 AttestationBundle verification ───────────────────────────
+{
+  const resolve = (claim: ClaimReference): Uint8Array | undefined => bundle0004Keys[claim];
+  const resolveHtlc9 = (claim: ClaimReference): Uint8Array | undefined => bundleHtlc9Keys[claim];
+  const htlc9SettlementPhase = bundleHtlc9.bundle.phaseSummary.find((p) => p.kind === "pay-cross-chain-htlc");
+  rec("bundle-0004-pass", "bundle", "§10.4", "DACS-VERIFY-0004 completed AttestationBundle verifies with buyer + seller signatures",
+    verifyBundle(bundle0004.bundle, resolve), "pass");
+
+  rec("bundle-htlc9-pass", "bundle", "§10.4", "HTLC-9 AttestationBundle verifies and carries settlement-atomicity failure + destination reveal txRef",
+    {
+      decision: verifyBundle(bundleHtlc9.bundle, resolveHtlc9),
+      outcome: bundleHtlc9.bundle.outcome,
+      phaseOutcome: htlc9SettlementPhase?.outcome,
+      errorClass: htlc9SettlementPhase?.errorClass,
+      revealRecorded: htlc9SettlementPhase?.txRefs?.some((tx) => tx.kind === "htlc-reveal" && tx.txHash === ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF) ?? false,
+    },
+    { decision: "pass", outcome: "failed-substrate", phaseOutcome: "fail", errorClass: "settlement-atomicity", revealRecorded: true });
+
+  const missingSeller = { ...bundle0004.bundle, signatures: bundle0004.bundle.signatures.filter((s) => s.party !== "did:demos:seller") };
+  rec("bundle-required-signer-fail", "bundle", "§10.4.1", "completed bundle missing a required seller signature → FAIL",
+    verifyBundle(missingSeller, resolve), "fail");
+
+  rec("bundle-malformed-key-error", "bundle", "§10.4.1", "wrong-length resolved public key → ERROR, not a false-negative FAIL",
+    verifyBundle(bundle0004.bundle, (claim) => claim === "did:demos:buyer" ? new Uint8Array([1, 2, 3]) : resolve(claim)), "error");
+
+  golden["bundle"] = {
+    status: "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
+    fixture: "conformance/fixtures/attestation-bundle-0004.json",
+    jobId: bundle0004.bundle.jobId,
+    bundleHash: bundle0004.bundleHash,
+    decisions: { pass: "pass", requiredSignerReject: "fail", malformedKey: "error" },
+    seeds: bundle0004.seeds,
+    publicKeys: bundle0004.publicKeys,
+    divergentSellerFixture: "conformance/fixtures/attestation-bundle-0004-seller.json",
+    divergentSeller: {
+      jobId: bundle0004Seller.bundle.jobId,
+      bundleHash: bundle0004Seller.bundleHash,
+      decision: verifyBundle(bundle0004Seller.bundle, resolve),
+      outcome: bundle0004Seller.bundle.outcome,
+    },
+    htlc9Fixture: "conformance/fixtures/attestation-bundle-htlc9.json",
+    htlc9: {
+      jobId: bundleHtlc9.bundle.jobId,
+      bundleHash: bundleHtlc9.bundleHash,
+      decision: verifyBundle(bundleHtlc9.bundle, resolveHtlc9),
+      settlementPhase: {
+        kind: htlc9SettlementPhase?.kind,
+        outcome: htlc9SettlementPhase?.outcome,
+        errorClass: htlc9SettlementPhase?.errorClass,
+        revealTxRef: ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF,
+      },
+    },
+  };
+}
+
+// ── §11.2.1 — DACS-X dispute flow (4-value decision) ────────────────────────
+// Golden: every dispute record pins full §10.4 AttestationBundles by exact
+// (jobId, bundleHash), and those bundles verify through verifyBundle above.
 {
   const NOW = 1_780_000_000_000;
   const buyer = keypairFromSeed("a1".repeat(32));
   const arbitrator = keypairFromSeed("b2".repeat(32));
   const buyerClaim = "did:demos:buyer";
   const arbitratorClaim = "did:arbitrator:court";
-  const jobId = "job-flow";
-  const bundleHash = contentHash({ bundleVersion: "1", jobId, outcome: "divergent" });
-  const knownBundles = [{ jobId, bundleHash }];
+  const jobId = bundle0004.bundle.jobId;
+  const bundleHash = bundle0004.bundleHash;
+  const sellerBundleHash = bundle0004Seller.bundleHash;
+  const divergentBundleRefs = [{ jobId, bundleHash }, { jobId, bundleHash: sellerBundleHash }];
+  const knownBundles = divergentBundleRefs;
+  const htlc9JobId = bundleHtlc9.bundle.jobId;
+  const htlc9BundleHash = bundleHtlc9.bundleHash;
+  const htlc9KnownBundles = [{ jobId: htlc9JobId, bundleHash: htlc9BundleHash }];
   const requirement: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "arbitrator-accreditation", verificationRequired: true }], primaryClaimSelector: "did" };
   const agreedRule: ArbitrationRule = { requirement, arbitrators: [arbitratorClaim], policyVersion: 1 };
   const ruleRef = sha256Hex(canonicalize(agreedRule));
@@ -235,14 +307,21 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   };
   const makeRecord = (signer = buyer): DisputeRecord => {
     const unsigned: Omit<DisputeRecord, "signature"> = {
-      dacsXVersion: "1", disputeId: "d1", initiator: buyerClaim, disputed: [{ jobId, bundleHash }],
+      dacsXVersion: "1", disputeId: "d1", initiator: buyerClaim, disputed: divergentBundleRefs,
       contestedClaim: "divergent-bundle", requestedRemedy: "refund", arbitration: { ruleRef }, openedAt: NOW,
+    };
+    return { ...unsigned, signature: signArtifact(dacsXSeparator("dacs-x-dispute-record"), unsigned as unknown as Record<string, unknown>, signer.privateKey) };
+  };
+  const makeHtlc9Record = (signer = buyer): DisputeRecord => {
+    const unsigned: Omit<DisputeRecord, "signature"> = {
+      dacsXVersion: "1", disputeId: "d1-htlc9", initiator: buyerClaim, disputed: [{ jobId: htlc9JobId, bundleHash: htlc9BundleHash }],
+      contestedClaim: "asymmetric-settlement", requestedRemedy: "no-fault", arbitration: { ruleRef }, openedAt: NOW,
     };
     return { ...unsigned, signature: signArtifact(dacsXSeparator("dacs-x-dispute-record"), unsigned as unknown as Record<string, unknown>, signer.privateKey) };
   };
   const makeOutcome = (record: DisputeRecord, signer = arbitrator, remedy: RemedyDecision = { kind: "refund-ordered", amount: "5", asset: "usdc" }): DisputeOutcome => {
     const unsigned: Omit<DisputeOutcome, "signature"> = {
-      dacsXVersion: "1", disputeId: "d1", disputeRecordHash: disputeRecordHash(record), arbitrator: arbitratorClaim, remedy, decidedAt: NOW + 1000,
+      dacsXVersion: "1", disputeId: record.disputeId, disputeRecordHash: disputeRecordHash(record), arbitrator: arbitratorClaim, remedy, decidedAt: NOW + 1000,
     };
     return { ...unsigned, signature: signArtifact(dacsXSeparator("dacs-x-dispute-outcome"), unsigned as unknown as Record<string, unknown>, signer.privateKey) };
   };
@@ -288,29 +367,46 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("dispute-unknown-bundle-fail", "dispute", "§11.2.1", "a dispute pinned to an unknown bundle → FAIL",
     verifyDisputeFlow(unknownBundle).decision, "fail");
 
-  const htlc9 = baseInput();
-  htlc9.outcome = makeOutcome(htlc9.record, arbitrator, { kind: "correction-ordered", correctedOutcome: "failure", reason: "dest-revealed-source-unclaimed", revealTxRef: "polygon-amoy:0xreveal" });
+  const htlc9Record = makeHtlc9Record();
+  const htlc9: DisputeFlowInput = {
+    record: htlc9Record,
+    initiatorPublicKeyRaw: buyer.publicKeyRaw,
+    knownBundles: htlc9KnownBundles,
+    arbitratorBundle,
+    agreedRule,
+    now: NOW + 1000,
+    outcome: makeOutcome(htlc9Record, arbitrator, {
+      kind: "correction-ordered",
+      correctedOutcome: "failure",
+      reason: "dest-revealed-source-unclaimed",
+      revealTxRef: ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF,
+    }),
+    arbitratorPublicKeyRaw: arbitrator.publicKeyRaw,
+    priorReputation: { jobId: htlc9JobId, weight: 1 },
+  };
   const htlc9Res = verifyDisputeFlow(htlc9);
   rec("dispute-htlc9-correction-pass", "dispute", "§11.2.1", "HTLC-9 asymmetric settlement closes via a correction amendment → PASS, contribution voided (never a refund)",
     { decision: htlc9Res.decision, effectiveWeight: htlc9Res.reweighted?.effectiveWeight }, { decision: "pass", effectiveWeight: 0 });
 
   golden["dispute"] = {
-    status: "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
+    status: "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
+    bundleRef: { jobId, bundleHash },
+    divergentBundleRefs,
+    htlc9BundleRef: { jobId: htlc9JobId, bundleHash: htlc9BundleHash },
     seeds: { buyer: "a1".repeat(32), arbitrator: "b2".repeat(32) },
     now: NOW,
     decisions: {
       happy: "pass", open: "indeterminate", badRecordKey: "fail", malformedKey: "error",
       ruleSwap: "fail", wrongOutcomeKey: "fail", nonCanonicalAmount: "fail", unknownBundle: "fail", htlc9Correction: "pass",
     },
-    inputs: "constructed deterministically in conformance/run.ts from the seeds above (no separate fixture files); re-run `bun conformance/run.ts` to regenerate",
+    inputs: "constructed deterministically in conformance/run.ts from the seeds above; divergent-bundle refs point to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json; HTLC-9 correction ref points to conformance/fixtures/attestation-bundle-htlc9.json",
   };
 }
 
-// ── §8.7 — DACS-X step 3: arbitrator transcript-disclosure (DP-1) — CANDIDATE ─
+// ── §8.7 — DACS-X step 3: arbitrator transcript-disclosure (DP-1) ────────────
 // Realises the §8.7 hook ("DACS-X dispute MAY require selective transcript
 // disclosure under signed party agreement or arbitrator order") under steward
 // sign-off DP-1: full transcript → named arbitrator only, no presentable artifact.
-// CANDIDATE alongside the dispute area, pending the #99 cross-impl fixture.
 {
   const NOW = 1_780_000_000_000;
   const buyer = keypairFromSeed("a1".repeat(32));
@@ -323,7 +419,10 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const agreedRule: ArbitrationRule = { requirement, arbitrators: [arbitratorClaim], policyVersion: 1 };
   const ruleRef = sha256Hex(canonicalize(agreedRule));
   const recUnsigned: Omit<DisputeRecord, "signature"> = {
-    dacsXVersion: "1", disputeId: "d1", initiator: buyerClaim, disputed: [{ jobId: "job-flow", bundleHash: sha256Hex("b") }],
+    dacsXVersion: "1", disputeId: "d1", initiator: buyerClaim, disputed: [
+      { jobId: bundle0004.bundle.jobId, bundleHash: bundle0004.bundleHash },
+      { jobId: bundle0004Seller.bundle.jobId, bundleHash: bundle0004Seller.bundleHash },
+    ],
     contestedClaim: "divergent-bundle", requestedRemedy: "reputation-correction", arbitration: { ruleRef }, openedAt: NOW,
   };
   const record: DisputeRecord = { ...recUnsigned, signature: signArtifact(dacsXSeparator("dacs-x-dispute-record"), recUnsigned as unknown as Record<string, unknown>, buyer.privateKey) };
@@ -373,19 +472,24 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     decide(di(buildGrant("arbitrator-order", [[arbitratorClaim, arbitrator]], { transcriptHash: transcriptContentHash(forged) }), { transcript: forged })), "fail");
 
   golden["disclosure"] = {
-    status: "candidate — single-impl; cross-impl pending #99 (DACS-VERIFY-0004)",
+    status: "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
+    bundleRef: { jobId: bundle0004.bundle.jobId, bundleHash: bundle0004.bundleHash },
+    divergentBundleRefs: [
+      { jobId: bundle0004.bundle.jobId, bundleHash: bundle0004.bundleHash },
+      { jobId: bundle0004Seller.bundle.jobId, bundleHash: bundle0004Seller.bundleHash },
+    ],
     seeds: { buyer: "a1".repeat(32), seller: "c3".repeat(32), arbitrator: "b2".repeat(32), rando: "d4".repeat(32) },
     now: NOW,
     decisions: {
       partyAgreement: "pass", arbitratorOrder: "pass", wrongRecipient: "fail", ruleSwap: "fail", transcriptSubstitution: "fail",
       missingConsent: "fail", wrongDispute: "fail", malformedKey: "error", transcriptUnsigned: "fail",
     },
-    inputs: "constructed deterministically in conformance/run.ts from the seeds above; re-run to regenerate",
+    inputs: "constructed deterministically in conformance/run.ts from the seeds above; dispute record points to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json",
   };
 }
 
 // ── report + emit ────────────────────────────────────────────────────────────
-const RESET = "\x1b[0m", GREEN = "\x1b[32m", RED = "\x1b[31m", DIM = "\x1b[2m", YEL = "\x1b[33m";
+const RESET = "\x1b[0m", GREEN = "\x1b[32m", RED = "\x1b[31m", DIM = "\x1b[2m";
 let passed = 0;
 const byArea = new Map<string, Case[]>();
 for (const c of cases) (byArea.get(c.area) ?? byArea.set(c.area, []).get(c.area)!).push(c);
@@ -394,8 +498,7 @@ const candidateN = cases.length - goldenN;
 
 console.log(`\nDACS v0.1 conformance — ${goldenN} golden + ${candidateN} candidate (proposed / non-normative)\n`);
 for (const [area, list] of byArea) {
-  const tag = statusOf(area) === "candidate" ? ` ${YEL}[candidate · pending #99]${RESET}` : "";
-  console.log(`  ${area}${tag}`);
+  console.log(`  ${area}`);
   for (const c of list) {
     const ok = eq(c.got, c.want);
     if (ok) passed++;
@@ -415,11 +518,16 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — byte-stable AND reference-verifier-accepted; no two conformant impls can disagree (§7.1 canonicalization, §14.4 decimals, §7.7 signing, §6.3 identity).`,
-      candidate: `${candidateN} vectors — single-impl (§11.2.1 dispute + §8.7 disclosure). PATH-OS's unmodified DACS-5 verify-bundle returns §7.5.1 indeterminate on the minimal dispute fixtures (it consumes a full §10.4 AttestationBundle); cross-impl agreement is pending the shared fixture in interface-issue #99 (DACS-VERIFY-0004).`,
+      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure; byte-stable and reference-verifier-accepted.`,
+      candidate: `${candidateN} vectors.`,
     },
-    cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), want: c.want })),
+    cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
   };
+  const fixturesDir = join(HERE, "fixtures");
+  mkdirSync(fixturesDir, { recursive: true });
+  writeFileSync(join(fixturesDir, "attestation-bundle-0004.json"), JSON.stringify(bundle0004.bundle, null, 2) + "\n");
+  writeFileSync(join(fixturesDir, "attestation-bundle-0004-seller.json"), JSON.stringify(bundle0004Seller.bundle, null, 2) + "\n");
+  writeFileSync(join(fixturesDir, "attestation-bundle-htlc9.json"), JSON.stringify(bundleHtlc9.bundle, null, 2) + "\n");
   writeFileSync(join(HERE, "MANIFEST.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(vectorsDir, "golden.json"), JSON.stringify(golden, null, 2) + "\n");
   console.log(`  ${DIM}emitted MANIFEST.json + vectors/golden.json${RESET}\n`);

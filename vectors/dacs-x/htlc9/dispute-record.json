@@ -1,11 +1,11 @@
 {
   "dacsXVersion": "1",
   "disputeId": "dispute-htlc9-0001",
-  "initiator": "did:demos:payer-11l5O7wT",
+  "initiator": "did:demos:buyer",
   "disputed": [
     {
-      "jobId": "job-htlc9-asymmetric",
-      "bundleHash": "ac3e58aed39e589a5671387b98e429d2ea263581b52e840c93a7f0d764a3a9dc"
+      "jobId": "DACS-VERIFY-HTLC9",
+      "bundleHash": "6cb31ccdf50c0ea4ada24f07f0b54c14bde6795e8e190683cdd1ecfcbdf205f2"
     }
   ],
   "contestedClaim": "asymmetric-settlement",
@@ -14,5 +14,5 @@
     "ruleRef": "7fe970f02c3554fcc02014b18b500c9dcec45ab70e0a8c966358de74e562e401"
   },
   "openedAt": 1780000000000,
-  "signature": "N_RksGAmLBLwdpvi4AA6sBZk0tsQe5nyswXB-8joMkIjqE8GzuwBkIFxWa1uwf-gzFu9B5rYn82luLH6zzfeCw"
+  "signature": "sZknyviiZauJEJNOPGMgxyw3wyBZrzbSMSRaE-AC6YNiCQ1xauhJg_GahcSpSQ5AsA9b5mPO-EhGDTYyKJ9JDg"
 }

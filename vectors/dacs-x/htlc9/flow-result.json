@@ -15,10 +15,10 @@
     }
   ],
   "reweighted": {
-    "jobId": "job-htlc9-asymmetric",
+    "jobId": "DACS-VERIFY-HTLC9",
     "priorWeight": 1,
     "effectiveWeight": 0,
     "adjudicated": true,
-    "adjudicatedBy": "414ce25de513f6bef0241b47db3f9520ce2d52b0c6ff77adf00f73813c1b00f8"
+    "adjudicatedBy": "92edc68bbb519969561666d3af0333534ef9d362f4c077ae78017d37d8f93a34"
   }
 }

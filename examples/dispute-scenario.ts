@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalize } from "../src/canonicalize.ts";
-import { sha256Hex, contentHash } from "../src/hash.ts";
+import { sha256Hex } from "../src/hash.ts";
 import { dacsXSeparator } from "../src/dacsx/separators.ts";
 import { verifyDisputeFlow } from "../src/dacsx/flow.ts";
 import { disputeRecordHash } from "../src/dacsx/dispute.ts";
@@ -14,6 +14,12 @@ import type {
 } from "../src/dacsx/types.ts";
 import type { IdentityBundle, BundleRequirement } from "../src/dacs1.ts";
 import { keypairFromSeed, signArtifact } from "./issuer-kit.ts";
+import {
+  ATTESTATION_BUNDLE_0004_BUYER_CLAIM,
+  ATTESTATION_BUNDLE_0004_SELLER_CLAIM,
+  buildAttestationBundle0004,
+  buildAttestationBundle0004Seller,
+} from "./attestation-bundle-0004.ts";
 
 // End-to-end DACS-X dispute scenario (§11.2.1) on the existing DACS substrate.
 //
@@ -28,27 +34,22 @@ const BASE_TIME = 1_780_000_000_000; // fixed for reproducible vectors
 
 // ── Parties (deterministic demo seeds → byte-stable vectors; public keys only
 //    are emitted). Seeds are fixed demo constants, never real keys. ───────────
-const buyer = keypairFromSeed("11".repeat(32));
-const seller = keypairFromSeed("22".repeat(32));
+const buyer = keypairFromSeed("a1".repeat(32));
+const seller = keypairFromSeed("c3".repeat(32));
 const arbitrator = keypairFromSeed("33".repeat(32));
 
-const buyerClaim = `did:demos:buyer-${buyer.publicKeyB64u.slice(0, 8)}`;
-const sellerClaim = `did:demos:seller-${seller.publicKeyB64u.slice(0, 8)}`;
+const buyerClaim = ATTESTATION_BUNDLE_0004_BUYER_CLAIM;
+const sellerClaim = ATTESTATION_BUNDLE_0004_SELLER_CLAIM;
 const arbitratorClaim = `did:arbitrator:acme-court`;
 
-// ── The contested session: a disputed AttestationBundle (DACS-5 §10) stub ────
-const jobId = "job-7f3c-divergent";
-const disputedBundleStub = {
-  bundleVersion: "1",
-  jobId,
-  phaseSummary: { delivered: false, contested: true },
-  outcome: "divergent", // §10.4.3 two-sided disagreement
-  seller: sellerClaim,
-  buyer: buyerClaim,
-  anchoredAt: BASE_TIME - 60_000,
-};
-const bundleHash = contentHash(disputedBundleStub);
-const knownBundles: DisputedBundleRef[] = [{ jobId, bundleHash }];
+// ── The contested session: same jobId, two divergent §10.4 bundles ───────────
+const bundle0004 = buildAttestationBundle0004();
+const bundle0004Seller = buildAttestationBundle0004Seller();
+const jobId = bundle0004.bundle.jobId;
+const bundleHash = bundle0004.bundleHash;
+const sellerBundleHash = bundle0004Seller.bundleHash;
+const disputedRefs: DisputedBundleRef[] = [{ jobId, bundleHash }, { jobId, bundleHash: sellerBundleHash }];
+const knownBundles: DisputedBundleRef[] = disputedRefs;
 
 // ── Arbitration rule, agreed at agreement time (§8.4.3) ──────────────────────
 const requirement: BundleRequirement = {
@@ -88,7 +89,7 @@ const recordUnsigned: Omit<DisputeRecord, "signature"> = {
   dacsXVersion: "1",
   disputeId: "dispute-0001",
   initiator: buyerClaim,
-  disputed: [{ jobId, bundleHash }],
+  disputed: disputedRefs,
   contestedClaim: "divergent-bundle",
   requestedRemedy: "refund",
   arbitration: { ruleRef },
@@ -161,9 +162,10 @@ write("arbitrator-bundle.json", arbitratorBundle);
 write("dispute-record.json", record);
 write("dispute-outcome.json", outcome);
 write("public-keys.json", { buyer: buyer.publicKeyB64u, seller: seller.publicKeyB64u, arbitrator: arbitrator.publicKeyB64u });
-write("disputed-bundle.json", disputedBundleStub);
+write("disputed-bundle.json", bundle0004.bundle);
+write("disputed-bundle-seller.json", bundle0004Seller.bundle);
 write("flow-result.json", { decision: result.decision, steps: result.steps, reweighted: result.reweighted });
-console.log(`\n  wrote ${7} illustrative (non-normative) vectors → vectors/dacs-x/`);
+console.log(`\n  wrote ${8} illustrative (non-normative) vectors → vectors/dacs-x/`);
 
 const ok = result.decision === "pass" && swapped.decision === "fail";
 console.log(`\n${ok ? "PASS" : "FAIL"} — DACS-X dispute prototype end-to-end`);

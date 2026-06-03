@@ -18,7 +18,9 @@ const buyerClaim = "did:demos:buyer";
 const arbitratorClaim = "did:arbitrator:court";
 const jobId = "job-flow";
 const bundleHash = contentHash({ bundleVersion: "1", jobId, outcome: "divergent" });
-const knownBundles = [{ jobId, bundleHash }];
+const sellerBundleHash = contentHash({ bundleVersion: "1", jobId, outcome: "seller-divergent" });
+const disputedRefs = [{ jobId, bundleHash }, { jobId, bundleHash: sellerBundleHash }];
+const knownBundles = disputedRefs;
 
 const requirement: BundleRequirement = {
   requirementVersion: "1",
@@ -44,7 +46,7 @@ function makeRecord(signer = buyer): DisputeRecord {
     dacsXVersion: "1",
     disputeId: "d1",
     initiator: buyerClaim,
-    disputed: [{ jobId, bundleHash }],
+    disputed: disputedRefs,
     contestedClaim: "divergent-bundle",
     requestedRemedy: "refund",
     arbitration: { ruleRef },

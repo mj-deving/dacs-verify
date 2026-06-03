@@ -13,6 +13,7 @@
 | `decimal.ts` | CD-1 §8.5.1, §9.3 | Canonical decimal for `PriceTerm.amount`; positivity. |
 | `signing.ts` | §7.7 (SIG-1..4) | Closed domain-separator registry; signed-bytes builder; Ed25519 verify; cross-artifact-replay resistance. |
 | `dacs1.ts` | §6.3 | Claim-scheme parse, `find_claim`/`match` (incl. the §6.3.3 tier-laundering guard), listing addressing + validation order. |
+| `dacs5/bundle.ts` | §10.4 / §10.4.1 | Full `AttestationBundle` verification — JCS-sans-signatures hash, `dacs-bundle:v1:` domain-separated signatures, required-signer rule (buyer+seller, +distinct orchestrator; aborted bundles single-signed per §10.11, never unsigned), 4-value decision. |
 | `report.ts` | CONTRIBUTING | Emits observations in the `§ + file + alternate-interpretation` format. |
 
 ## DACS-X dispute prototype (§11.2.1) — the primary deliverable
@@ -37,11 +38,15 @@ The load-bearing design point: **arbitrator legitimacy binds at *agreement* time
 ## Run
 
 ```bash
-bun test                                # 55 tests (foundation + DACS-X dispute + HTLC-9 seam)
+bun test                                # foundation + DACS-5 bundle + DACS-X dispute + HTLC-9 seam
+bun conformance/run.ts                  # 46 byte-stable conformance vectors (24 primitives + 4 bundle + 9 dispute + 9 disclosure)
+bun examples/attestation-bundle-0004.ts # emit the full §10.4 AttestationBundle fixture (DACS-VERIFY-0004)
 bun examples/dispute-scenario.ts        # §10.4.3 divergent-bundle dispute → arbitrated → reputation reweighted
 bun examples/htlc9-dispute-scenario.ts  # the HTLC-9 settlement seam → correction amendment (not a refund)
 bun run typecheck                       # strict tsc --noEmit, clean
 ```
+
+`conformance/` is a byte-stable, reference-verifier-accepted vector set (`MANIFEST.json` + `vectors/golden.json`) — every case is emitted deterministically and re-checked against this verifier, so two conformant implementations cannot disagree on the pinned outputs. The §10.4 dispute/disclosure cases pin the full `DACS-VERIFY-0004` AttestationBundle fixture (and a divergent seller-side fixture for the §10.4.3(d) two-sided case).
 
 ## Conformance observations encoded as executable tests (`test/`)
 

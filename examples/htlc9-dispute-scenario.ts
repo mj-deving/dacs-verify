@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalize } from "../src/canonicalize.ts";
-import { sha256Hex, contentHash } from "../src/hash.ts";
+import { sha256Hex } from "../src/hash.ts";
 import { dacsXSeparator } from "../src/dacsx/separators.ts";
 import { verifyDisputeFlow } from "../src/dacsx/flow.ts";
 import { disputeRecordHash } from "../src/dacsx/dispute.ts";
@@ -14,6 +14,11 @@ import type {
 } from "../src/dacsx/types.ts";
 import type { IdentityBundle, BundleRequirement } from "../src/dacs1.ts";
 import { keypairFromSeed, signArtifact } from "./issuer-kit.ts";
+import {
+  ATTESTATION_BUNDLE_0004_BUYER_CLAIM,
+  ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF,
+  buildAttestationBundleHtlc9,
+} from "./attestation-bundle-0004.ts";
 
 // THE SETTLEMENT → DISPUTE SEAM (HTLC-9, §9.5.4 / §9.8).
 //
@@ -31,29 +36,19 @@ import { keypairFromSeed, signArtifact } from "./issuer-kit.ts";
 
 const BASE_TIME = 1_780_000_000_000;
 
-const payer = keypairFromSeed("44".repeat(32)); // buyer / source-chain payer
+const payer = keypairFromSeed("a1".repeat(32)); // buyer / source-chain payer
 const arbitrator = keypairFromSeed("55".repeat(32));
 
-const payerClaim = `did:demos:payer-${payer.publicKeyB64u.slice(0, 8)}`;
+const payerClaim = ATTESTATION_BUNDLE_0004_BUYER_CLAIM;
 const arbitratorClaim = `did:arbitrator:settlement-court`;
 
 // The contested session: a cross-chain HTLC settlement that hit the HTLC-9
 // asymmetric state. The bundle records outcome:"failure" with the structured
 // reason and the destination-chain reveal txRef (§9.5.4 / §9.8).
-const jobId = "job-htlc9-asymmetric";
-const revealTxRef = "polygon-amoy:0xreveal9c1a…htlc-reveal";
-const htlcBundleStub = {
-  bundleVersion: "1",
-  jobId,
-  outcome: "failure",
-  reason: "dest-revealed-source-unclaimed",
-  paymentTxRefs: [
-    { kind: "htlc-lock", chain: "eth-sepolia", tx: "eth-sepolia:0xlock…" },
-    { kind: "htlc-reveal", chain: "polygon-amoy", tx: revealTxRef },
-  ],
-  anchoredAt: BASE_TIME - 30_000,
-};
-const bundleHash = contentHash(htlcBundleStub);
+const bundleHtlc9 = buildAttestationBundleHtlc9();
+const jobId = bundleHtlc9.bundle.jobId;
+const revealTxRef = ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF;
+const bundleHash = bundleHtlc9.bundleHash;
 const knownBundles: DisputedBundleRef[] = [{ jobId, bundleHash }];
 
 const requirement: BundleRequirement = {
@@ -128,11 +123,11 @@ console.log(`  reputation: weight ${result.reweighted?.priorWeight} → ${result
 const outDir = join(import.meta.dir, "..", "vectors", "dacs-x", "htlc9");
 mkdirSync(outDir, { recursive: true });
 const write = (name: string, obj: unknown) => writeFileSync(join(outDir, name), JSON.stringify(obj, null, 2) + "\n");
-write("htlc9-bundle.json", htlcBundleStub);
+write("htlc9-bundle.json", bundleHtlc9.bundle);
 write("dispute-record.json", record);
 write("dispute-outcome.json", outcome);
 write("flow-result.json", { decision: result.decision, steps: result.steps, reweighted: result.reweighted });
-write("public-keys.json", { payer: payer.publicKeyB64u, arbitrator: arbitrator.publicKeyB64u });
+write("public-keys.json", { payer: payer.publicKeyB64u, arbitrator: arbitrator.publicKeyB64u, bundleParties: bundleHtlc9.publicKeys });
 
 const ok = result.decision === "pass" && result.reweighted?.effectiveWeight === 0;
 console.log(`\n  wrote 5 illustrative (non-normative) vectors → vectors/dacs-x/htlc9/`);

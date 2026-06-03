@@ -164,14 +164,14 @@ The producer never touches a private key in its verifier path (read-only); all s
 
 ## 7. Vector loop (anti-drift)
 
-The reference impl emits **illustrative, non-normative** fixtures, byte-stable across runs (deterministic seeds), as candidate §14 dispute vectors:
+The reference impl emits **illustrative, non-normative** fixtures, byte-stable across runs (deterministic seeds). The §14 conformance runner promotes the dispute/disclosure cases to golden only on this repo's `verifyBundle` acceptance of DACS-VERIFY-0004:
 
 | path | scenario |
 |------|----------|
 | `vectors/dacs-x/*.json` | §10.4.3 divergent-bundle dispute → credentialed arbitrator → arbitrated outcome → reweight |
 | `vectors/dacs-x/htlc9/*.json` | HTLC-9 asymmetric-settlement dispute → `correction` amendment → contribution voided |
 
-**The loop:** the producer publishes vectors as it produces them; the consumer runs them through `verify-bundle` + `settlement-evidence-verifier` (+ the forthcoming `DisputeOutcome` verifier) and reports PASS/FAIL. Any disagreement is a drift signal against this contract — resolved by fixing whichever side diverges from §1–§5, or by amending this contract (§8). These vectors prove **internal self-consistency between two impls**, NOT spec conformance — DACS-X is unratified.
+**The loop:** the producer publishes vectors as it produces them; external consumers may run them through their own bundle / settlement / outcome verifiers and report PASS/FAIL. Any disagreement is a drift signal against this contract — resolved by fixing whichever side diverges from §1–§5, or by amending this contract (§8). These vectors prove this repo's reference-verifier self-consistency, NOT acceptance by another implementation and NOT conformance to any ratified DACS-X — DACS-X is unratified.
 
 ---
 

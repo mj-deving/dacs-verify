@@ -26,7 +26,9 @@ const buyerClaim = "did:demos:buyer";
 const arbitratorClaim = "did:arbitrator:court";
 const jobId = "job-1";
 const bundleHash = contentHash({ bundleVersion: "1", jobId, outcome: "divergent" });
-const knownBundles = [{ jobId, bundleHash }];
+const sellerBundleHash = contentHash({ bundleVersion: "1", jobId, outcome: "seller-divergent" });
+const disputedRefs = [{ jobId, bundleHash }, { jobId, bundleHash: sellerBundleHash }];
+const knownBundles = disputedRefs;
 
 const requirement: BundleRequirement = {
   requirementVersion: "1",
@@ -52,7 +54,7 @@ function makeRecord(signer = buyer, over: Partial<Omit<DisputeRecord, "signature
     dacsXVersion: "1",
     disputeId: "d1",
     initiator: buyerClaim,
-    disputed: [{ jobId, bundleHash }],
+    disputed: disputedRefs,
     contestedClaim: "divergent-bundle",
     requestedRemedy: "refund",
     arbitration: { ruleRef },
@@ -96,10 +98,20 @@ test("ISC-23: a DisputeRecord signed by the wrong key is rejected", () => {
 
 // ── ISC-22: bundle pinning ───────────────────────────────────────────────────
 test("ISC-22: a DisputeRecord pinned to a different bundle hash is rejected", () => {
-  const record = makeRecord(buyer, { disputed: [{ jobId, bundleHash: "00".repeat(32) }] });
+  const record = makeRecord(buyer, { disputed: [{ jobId, bundleHash }, { jobId, bundleHash: "00".repeat(32) }] });
   const res = verifyDisputeRecord(record, buyer.publicKeyRaw, knownBundles);
   expect(res.ok).toBe(false);
   if (!res.ok) expect(res.reason).toContain("bundle hash mismatch");
+});
+
+test("ISC-22: divergent-bundle disputes require two hashes for the same job", () => {
+  const single = makeRecord(buyer, { disputed: [{ jobId, bundleHash }] });
+  const duplicate = makeRecord(buyer, { disputed: [{ jobId, bundleHash }, { jobId, bundleHash }] });
+  const crossJob = makeRecord(buyer, { disputed: [{ jobId, bundleHash }, { jobId: "job-2", bundleHash: sellerBundleHash }] });
+
+  expect(verifyDisputeRecord(single, buyer.publicKeyRaw, knownBundles).ok).toBe(false);
+  expect(verifyDisputeRecord(duplicate, buyer.publicKeyRaw, knownBundles).ok).toBe(false);
+  expect(verifyDisputeRecord(crossJob, buyer.publicKeyRaw, [...knownBundles, { jobId: "job-2", bundleHash: sellerBundleHash }]).ok).toBe(false);
 });
 
 test("ISC-22: a DisputeRecord with no disputed bundles is rejected", () => {
