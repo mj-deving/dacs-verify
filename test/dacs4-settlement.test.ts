@@ -270,3 +270,19 @@ test("rail whose railType does not match its network kind returns fail", () => {
   });
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
 });
+
+// POSITIVE locks — documenting the deliberate conformance-scope interpretation (advisor commitment-boundary review).
+test("rail with matching kinds but differing chainIds passes (RD-5 binds kinds, not chainId-equality)", () => {
+  const c = paymentCase({
+    paymentInput: (input) => ({ ...input, rail: { ...input.rail, asset: { kind: "erc20", chainId: 1, contract: "0x0000000000000000000000000000000000000001", symbol: "USDC", decimals: 6 }, network: { kind: "evm", chainId: 80002, rpcAttestation: "evm-rpc" } } }),
+  });
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
+});
+
+test("delivery evidence carrying an extra payment field passes (SIG-5 preserve-unknown / open-world)", () => {
+  const base = buildSettlementDeliverySuccess();
+  const { signature: _s, ...unsigned } = base.evidence;
+  const evidence = signEvidence({ ...unsigned, paymentAmount: { amount: "5", currency: "USDC" } });
+  const result = refreshRef(base.result, evidence);
+  expect(verifySettlementEvidence({ result, evidence, expectedOrchestrator: base.expectedOrchestrator, resolveKey: resolveFrom(base.publicKeys) })).toBe("pass");
+});

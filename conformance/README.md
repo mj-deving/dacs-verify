@@ -6,17 +6,17 @@ An independent, third-party set of executable conformance vectors for DACS v0.1,
 
 Surface labels travel with each vector:
 
-- **GOLDEN (46)** — byte-stable and accepted by this reference verifier: 24 primitive checks, 4 checks in one §10.4 bundle area, and 18 dispute/disclosure checks pinned to DACS-VERIFY-0004 bundle refs.
+- **GOLDEN (76)** — byte-stable and accepted by this reference verifier: 24 primitive checks, 4 checks in one §10.4 bundle area, 18 dispute/disclosure checks pinned to DACS-VERIFY-0004 bundle refs, and 30 §14.4 settlement-evidence checks.
 - **CANDIDATE (0)** — no current candidate vectors.
 
 ## Why
 
-The spec's §14 conformance chapter defines conformant behaviour but ships no second independent verifier and no published vectors. This is one: 24 golden primitive vectors, DACS-VERIFY-0004 §10.4 AttestationBundle fixtures, and 18 golden vectors exercising the proposed DACS-X dispute + disclosure flow against pinned bundle refs.
+The spec's §14 conformance chapter defines conformant behaviour but ships no second independent verifier and no published vectors. This is one: 24 golden primitive vectors, DACS-VERIFY-0004 §10.4 AttestationBundle fixtures, 18 golden vectors exercising the proposed DACS-X dispute + disclosure flow against pinned bundle refs, and 30 golden §14.4 SettlementEvidence vectors (PC-1..6, RD-5 rail coherence, CD-1 amounts).
 
 ## Run
 
 ```sh
-bun conformance/run.ts          # run all 46 vectors → exit non-zero on any failure
+bun conformance/run.ts          # run all 76 vectors → exit non-zero on any failure
 bun conformance/run.ts --emit   # regenerate MANIFEST.json + vectors/golden.json
 ```
 
@@ -31,6 +31,7 @@ Deterministic by construction: every key and signature is derived from a fixed p
 - `bundle`: 4 golden vectors, §10.4 / §10.4.1 AttestationBundle verification.
 - `dispute`: 9 golden vectors, §11.2.1 DACS-X dispute flow with the 4-value decision (`pass`/`fail`/`indeterminate`/`error`).
 - `disclosure`: 9 golden vectors, §8.7 DACS-X arbitrator transcript-disclosure (step 3, DP-1).
+- `settlement`: 30 golden vectors, §14.4 SettlementEvidence verification — PC-1..6 (anchor, attestationRef→evidence hash, outcome classification, currency-resolution, settlementFinality), RD-5 railType↔asset/network coherence, §9.5.1/PIPE-5 amount==agreement.terms.price, CD-1/§9.3 amount canonicalisation, and the `dacs-4-evidence` signature.
 
 ## §8.7 arbitrator-disclosure (step 3)
 
@@ -42,7 +43,9 @@ The disclosure vectors exercise DACS-X step 3 under steward sign-off **DP-1**: t
 - `fixtures/attestation-bundle-0004.json` — the full byte-stable completed §10.4 AttestationBundle fixture.
 - `fixtures/attestation-bundle-0004-seller.json` — the same `jobId` as DACS-VERIFY-0004 with a divergent `failed-counterparty` outcome; it verifies independently and has a different bundle hash.
 - `fixtures/attestation-bundle-htlc9.json` — the full byte-stable HTLC-9 asymmetric-settlement fixture.
-- `vectors/golden.json` — pinned outputs: deterministic signature, native-address derivation, bundle refs/hashes, and dispute/disclosure decision maps + seeds.
+- `fixtures/settlement-evidence-payment-success.json` — a byte-stable pay-evm-erc20 success SettlementEvidence (§9.7) with its PaymentPhaseInput + PhaseHandlerResult, signed by a deterministic orchestrator key.
+- `fixtures/settlement-evidence-delivery-success.json` — a byte-stable deliver-storage-program success SettlementEvidence (deliverable content hash + anchor, no settlementFinality).
+- `vectors/golden.json` — pinned outputs: deterministic signature, native-address derivation, bundle refs/hashes, dispute/disclosure decision maps + seeds, and the §14.4 settlement decision map.
 - `run.ts` — the runner; also the executable spec of how each input is constructed.
 
 ## Implementation observations (non-normative)

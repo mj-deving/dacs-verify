@@ -654,6 +654,16 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("settlement-rail-network-mismatch-fail", "settlement", "§9.4.3 RD-5", "evm-erc20 rail with a solana network → FAIL (railType↔asset/network coherence)",
     decide(paymentCase({ paymentInput: (i) => ({ ...i, rail: { ...i.rail, network: { kind: "solana", cluster: "mainnet" } } }) })), "fail");
 
+  // POSITIVE goldens locking the deliberate conformance-scope interpretation (RD-5 = kinds only; SIG-5 open-world) —
+  // documented so it's auditable and not silently re-litigated by a later review round.
+  rec("settlement-cross-chainid-matching-kind-pass", "settlement", "§9.4.3 RD-5", "rail with matching KINDS but asset.chainId≠network.chainId → PASS (RD-5 binds kinds, not chainId-equality)",
+    decide(paymentCase({ paymentInput: (i) => ({ ...i, rail: { ...i.rail, asset: { kind: "erc20", chainId: 1, contract: "0x0000000000000000000000000000000000000001", symbol: "USDC", decimals: 6 }, network: { kind: "evm", chainId: 80002, rpcAttestation: "evm-rpc" } } }) })), "pass");
+
+  const { signature: _delPaySig, ...delPayUnsigned } = settlementDelivery.evidence;
+  const deliveryWithExtraPayment = signSettlement({ ...delPayUnsigned, paymentAmount: { amount: "5", currency: "USDC" } });
+  rec("settlement-delivery-extra-payment-field-pass", "settlement", "§7.7 SIG-5", "delivery evidence carrying a non-settlementFinality payment field → PASS (SIG-5 preserve-unknown / open-world)",
+    decide({ result: refreshRef(settlementDelivery.result, deliveryWithExtraPayment), evidence: deliveryWithExtraPayment }), "pass");
+
   golden["settlement"] = {
     status: "golden — reference-verifier-accepted + byte-stable",
     fixture: "conformance/fixtures/settlement-evidence-payment-success.json",
@@ -691,6 +701,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       underpaymentVsAgreement: "fail",
       incoherentRailTypeHandler: "fail",
       railNetworkMismatch: "fail",
+      crossChainIdMatchingKindPass: "pass",
+      deliveryExtraPaymentFieldPass: "pass",
     },
     seeds: settlementPayment.seeds,
     publicKeys: settlementPayment.publicKeys,

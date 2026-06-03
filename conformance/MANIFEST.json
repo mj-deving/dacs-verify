@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "74 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area; byte-stable and reference-verifier-accepted.",
+    "golden": "76 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -712,6 +712,24 @@
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": "fail"
+    },
+    {
+      "id": "settlement-cross-chainid-matching-kind-pass",
+      "area": "settlement",
+      "spec": "§9.4.3 RD-5",
+      "summary": "rail with matching KINDS but asset.chainId≠network.chainId → PASS (RD-5 binds kinds, not chainId-equality)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "pass"
+    },
+    {
+      "id": "settlement-delivery-extra-payment-field-pass",
+      "area": "settlement",
+      "spec": "§7.7 SIG-5",
+      "summary": "delivery evidence carrying a non-settlementFinality payment field → PASS (SIG-5 preserve-unknown / open-world)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "pass"
     }
   ]
 }

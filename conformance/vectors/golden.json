@@ -162,7 +162,9 @@
       "negativeFee": "fail",
       "underpaymentVsAgreement": "fail",
       "incoherentRailTypeHandler": "fail",
-      "railNetworkMismatch": "fail"
+      "railNetworkMismatch": "fail",
+      "crossChainIdMatchingKindPass": "pass",
+      "deliveryExtraPaymentFieldPass": "pass"
     },
     "seeds": {
       "orchestrator": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4",
