@@ -1,0 +1,58 @@
+{
+  "bundleVersion": "1",
+  "jobId": "DACS-VERIFY-L3-ONE-SIDED",
+  "outcome": "aborted-by-other",
+  "listingRef": {
+    "listingId": "listing-dacs-verify-l3-one-sided",
+    "version": 1,
+    "contentHash": "688d73919618186e01836b5c7af78b1c5c9078385e43fd26d12ca1a21f8d9dba"
+  },
+  "agreementRef": {
+    "kind": "dacs-3-agreement",
+    "id": "agreement-DACS-VERIFY-L3-ONE-SIDED",
+    "contentHash": "54c89acf3f58bf46ab870cce991da5782c076f4b4a9f1818a5b4dcb8985ec0c5"
+  },
+  "parties": [
+    {
+      "role": "buyer",
+      "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+      "primaryClaim": "did:demos:buyer"
+    },
+    {
+      "role": "seller",
+      "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+      "primaryClaim": "did:demos:seller"
+    }
+  ],
+  "phaseSummary": [
+    {
+      "index": 0,
+      "kind": "verify-one-sided",
+      "outcome": "fail",
+      "errorClass": "counterparty",
+      "attestationRef": {
+        "kind": "dacs-4-evidence",
+        "id": "evidence-DACS-VERIFY-L3-ONE-SIDED",
+        "contentHash": "46bf69e38daee58d64e15027bfe68f9e2be727b4bdc904e0f485a7bb5bd35097"
+      }
+    }
+  ],
+  "vetRecords": [],
+  "settlementEvidence": [
+    {
+      "kind": "dacs-4-evidence",
+      "id": "evidence-DACS-VERIFY-L3-ONE-SIDED",
+      "contentHash": "46bf69e38daee58d64e15027bfe68f9e2be727b4bdc904e0f485a7bb5bd35097"
+    }
+  ],
+  "recipeRegistryVersion": 1,
+  "railRegistryVersion": 1,
+  "finalisedAt": 1780050001000,
+  "signatures": [
+    {
+      "party": "did:demos:buyer",
+      "algorithm": "ed25519",
+      "value": "lDUmqFIxoG-2cJiNw187BoeF-iF-GLhruqYjm_2hIIRTeSctouDPqJY1YesXLPgCS7W21ncRoHq4VMV7Hwl_CQ"
+    }
+  ]
+}

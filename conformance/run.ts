@@ -59,7 +59,16 @@ import {
   type DisclosureAuthority,
   type DisclosureInput,
 } from "../src/dacsx/index.ts";
-import { verifyBundle } from "../src/dacs5/index.ts";
+import {
+  bundleAddress,
+  bundleHash,
+  consumeBundles,
+  deriveReputation,
+  isLegalTransition,
+  stateToOutcome,
+  twoSidedLookup,
+  verifyBundle,
+} from "../src/dacs5/index.ts";
 import {
   evidenceHash,
   verifySettlementEvidence,
@@ -79,6 +88,18 @@ import {
   buildSettlementDeliverySuccess,
   buildSettlementPaymentSuccess,
 } from "../examples/settlement-evidence.ts";
+import {
+  VERIFY_BUYER_CLAIM,
+  VERIFY_SELLER_CLAIM,
+  VERIFY_DIVERGENT_JOB_ID,
+  VERIFY_ONE_SIDED_JOB_ID,
+  VERIFY_MISANCHORED_JOB_ID,
+  VERIFY_REPUTATION_COMPUTED_AT,
+  VERIFY_REPUTATION_WINDOW_END,
+  VERIFY_REPUTATION_WINDOW_START,
+  buildSessionBundleFixtures,
+  makeBundleFetch,
+} from "../examples/session-bundles.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EMIT = process.argv.includes("--emit");
@@ -94,6 +115,7 @@ const bundle0004Seller = buildAttestationBundle0004Seller();
 const bundleHtlc9 = buildAttestationBundleHtlc9();
 const settlementPayment = buildSettlementPaymentSuccess();
 const settlementDelivery = buildSettlementDeliverySuccess();
+const verifySession = buildSessionBundleFixtures();
 const bundle0004Keys: Record<ClaimReference, Uint8Array> = Object.fromEntries(
   Object.entries(bundle0004.publicKeys).map(([claim, key]) => [claim, new Uint8Array(Buffer.from(key, "base64url"))]),
 ) as Record<ClaimReference, Uint8Array>;
@@ -709,6 +731,219 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   };
 }
 
+// ── §14.5 — DACS-5 Verify ───────────────────────────────────────────────────
+{
+  // §10.4.2: the consumer knows the session's expected parties (from the agreement it audits) — anchoring binds to these.
+  const VERIFY_EXPECTED = { buyer: VERIFY_BUYER_CLAIM, seller: VERIFY_SELLER_CLAIM };
+  const lookupShape = (jobId: string, fetch: (address: string) => unknown): { buyer: boolean; seller: boolean } => {
+    const found = twoSidedLookup(jobId, fetch);
+    return { buyer: found.buyer !== undefined, seller: found.seller !== undefined };
+  };
+  const consumeShape = (jobId: string, fetch: (address: string) => unknown): Record<string, unknown> => {
+    const result = consumeBundles(jobId, fetch, verifySession.resolveKey, VERIFY_EXPECTED);
+    return {
+      verdict: result.verdict,
+      buyerDecision: result.buyer?.decision,
+      sellerDecision: result.seller?.decision,
+      buyerOutcome: result.buyer?.bundle.outcome,
+      sellerOutcome: result.seller?.bundle.outcome,
+      buyerHash: result.buyer === undefined ? undefined : bundleHash(result.buyer.bundle),
+      sellerHash: result.seller === undefined ? undefined : bundleHash(result.seller.bundle),
+      abortedBySelfRole: result.abortedBySelfRole,
+      abortedByOtherRole: result.abortedByOtherRole,
+    };
+  };
+  // §10.5.1: the reputation fixtures are the BUYER's own anchored session bundles (one per session).
+  const anchoredBuyer = verifySession.reputationBundles.map((bundle) => ({ bundle, anchoredBy: VERIFY_BUYER_CLAIM }));
+  const reputation = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    anchoredBuyer,
+    VERIFY_REPUTATION_WINDOW_START,
+    VERIFY_REPUTATION_WINDOW_END,
+    VERIFY_REPUTATION_COMPUTED_AT,
+  );
+  const substrateOnly = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    anchoredBuyer.filter((a) => a.bundle.outcome === "failed-substrate"),
+    VERIFY_REPUTATION_WINDOW_START,
+    VERIFY_REPUTATION_WINDOW_END,
+    VERIFY_REPUTATION_COMPUTED_AT,
+  );
+  // §10.4.3(a): a bundle whose embedded jobId ≠ the looked-up jobId is ignored (cross-session replay/misreturn).
+  const crossSessionFetch = makeBundleFetch("DACS-VERIFY-L3-OTHER-JOB", verifySession.divergentBuyer);
+  const crossSessionVerdict = consumeBundles("DACS-VERIFY-L3-OTHER-JOB", crossSessionFetch, verifySession.resolveKey, VERIFY_EXPECTED).verdict;
+  // §10.4.2/§10.11: a seller-signed bundle placed at the BUYER address is rejected (role-signature binding) → absent.
+  const misanchoredVerdict = consumeBundles(VERIFY_MISANCHORED_JOB_ID, verifySession.fetchMisanchored, verifySession.resolveKey, VERIFY_EXPECTED).verdict;
+  // §10.4.2: a present side whose role signature does NOT verify (here the buyer claim resolves to the seller's key) is
+  // not classified present → absent; unverifiable storage data must not drive abort provenance.
+  const wrongBuyerKey = new Uint8Array(Buffer.from(verifySession.publicKeys[VERIFY_SELLER_CLAIM]!, "base64url"));
+  const unverifiedSigVerdict = consumeBundles(VERIFY_ONE_SIDED_JOB_ID, verifySession.fetchOneSided, (claim) => (claim === VERIFY_BUYER_CLAIM ? wrongBuyerKey : verifySession.resolveKey(claim)), VERIFY_EXPECTED).verdict;
+  // §10.4.3(c)/§10.5.1: both two-sided copies of ONE unified session, scored for buyer → counted once (no double-count).
+  const completedBundle = verifySession.reputationBundles.find((b) => b.outcome === "completed" && b.finalisedAt <= VERIFY_REPUTATION_WINDOW_END)!;
+  const noDoubleCount = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    [{ bundle: completedBundle, anchoredBy: VERIFY_BUYER_CLAIM }, { bundle: completedBundle, anchoredBy: VERIFY_SELLER_CLAIM }],
+    VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT,
+  );
+  // §10.4.3/§10.11/§10.5.1: buyer-anchored bundles scored for the SELLER must NOT fault the seller (abort provenance).
+  const abortProvenance = deriveReputation(
+    VERIFY_SELLER_CLAIM,
+    anchoredBuyer,
+    VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT,
+  );
+
+  rec("verify-address-buyer", "verify", "§10.4.2", "buyer bundle address is stor-{sha256(jobId + \"-bundle-buyer\")}",
+    bundleAddress("job-1", "buyer"), "stor-c7bc689288bad9d6f448ca14c9aa949a4c9574a317f4a591c7f9486f4f7a6b8f");
+  rec("verify-address-role-specific", "verify", "§10.4.2", "buyer/seller/orchestrator addresses are role-specific",
+    [
+      bundleAddress("job-1", "buyer") !== bundleAddress("job-1", "seller"),
+      bundleAddress("job-1", "seller") !== bundleAddress("job-1", "orchestrator"),
+    ],
+    [true, true]);
+  rec("verify-lookup-both", "verify", "§10.4.3(a)", "two-sided lookup fetches both expected addresses",
+    lookupShape(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchDivergent), { buyer: true, seller: true });
+  rec("verify-lookup-one", "verify", "§10.4.3(a)", "two-sided lookup preserves a one-sided fetch result",
+    lookupShape(VERIFY_ONE_SIDED_JOB_ID, verifySession.fetchOneSided), { buyer: true, seller: false });
+  rec("verify-lookup-none", "verify", "§10.4.3(a)", "two-sided lookup returns no sides when both addresses are absent",
+    lookupShape("DACS-VERIFY-L3-ABSENT", verifySession.fetchAbsent), { buyer: false, seller: false });
+
+  rec("verify-consume-absent", "verify", "§10.4.3(a)", "no bundles at either expected address → absent",
+    consumeShape("DACS-VERIFY-L3-ABSENT", verifySession.fetchAbsent), { verdict: "absent" });
+  rec("verify-consume-unified", "verify", "§10.4.3(c)", "both present and bundleHash-equal → unified",
+    {
+      verdict: consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchUnified, verifySession.resolveKey, VERIFY_EXPECTED).verdict,
+      equalHashes: bundleHash(verifySession.divergentBuyer) === bundleHash(verifySession.divergentBuyer),
+      buyerDecision: consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchUnified, verifySession.resolveKey, VERIFY_EXPECTED).buyer?.decision,
+      sellerDecision: consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchUnified, verifySession.resolveKey, VERIFY_EXPECTED).seller?.decision,
+    },
+    { verdict: "unified", equalHashes: true, buyerDecision: "pass", sellerDecision: "pass" });
+  rec("verify-consume-one-sided", "verify", "§10.4.3(b)/§10.11", "one present side → missing side aborted-by-self; present side aborted-by-other",
+    consumeShape(VERIFY_ONE_SIDED_JOB_ID, verifySession.fetchOneSided),
+    {
+      verdict: "one-sided",
+      buyerDecision: "pass",
+      buyerOutcome: "aborted-by-other",
+      buyerHash: bundleHash(verifySession.oneSidedBuyer),
+      abortedBySelfRole: "seller",
+      abortedByOtherRole: "buyer",
+    });
+  rec("verify-consume-divergent", "verify", "§10.4.3(d)", "canonically divergent bundles are retained for per-party policy",
+    {
+      verdict: consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchDivergent, verifySession.resolveKey, VERIFY_EXPECTED).verdict,
+      buyerDecision: consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchDivergent, verifySession.resolveKey, VERIFY_EXPECTED).buyer?.decision,
+      sellerDecision: consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchDivergent, verifySession.resolveKey, VERIFY_EXPECTED).seller?.decision,
+      distinctHashes: bundleHash(verifySession.divergentBuyer) !== bundleHash(verifySession.divergentSeller),
+      notOutcomeEnum: !["completed", "failed-perm", "failed-counterparty", "failed-substrate", "aborted-by-self", "aborted-by-other"].includes(consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchDivergent, verifySession.resolveKey, VERIFY_EXPECTED).verdict),
+    },
+    { verdict: "divergent", buyerDecision: "pass", sellerDecision: "pass", distinctHashes: true, notOutcomeEnum: true });
+
+  rec("verify-st-draft-vet-legal", "verify", "§10.3.1 ST-1", "draft → vet-pending is legal",
+    isLegalTransition("draft", "vet-pending"), true);
+  rec("verify-st-vet-abort-legal", "verify", "§10.3.1 ST-1", "vet-pending → aborted-by-self is legal",
+    isLegalTransition("vet-pending", "aborted-by-self"), true);
+  rec("verify-st-settle-final-legal", "verify", "§10.3.1 ST-1", "settle-completed → finalised is legal",
+    isLegalTransition("settle-completed", "finalised"), true);
+  rec("verify-st-paused-resume-legal", "verify", "§10.3.1 ST-7", "substrate-failure-paused may resume to a pending phase",
+    isLegalTransition("substrate-failure-paused", "commit-pending"), true);
+  rec("verify-st-negotiate-after-commit-illegal", "verify", "§10.3.1 ST-1", "commit-completed → negotiate-pending is illegal",
+    isLegalTransition("commit-completed", "negotiate-pending"), false);
+  rec("verify-st-terminal-forward-illegal", "verify", "§10.3.1 ST-6", "finalised → rate-pending is illegal",
+    isLegalTransition("finalised", "rate-pending"), false);
+  rec("verify-st-paused-final-illegal", "verify", "§10.3.1 ST-7", "substrate-failure-paused → finalised is illegal",
+    isLegalTransition("substrate-failure-paused", "finalised"), false);
+
+  rec("verify-outcome-finalised", "verify", "§10.3.1", "finalised → completed",
+    stateToOutcome("finalised"), "completed");
+  rec("verify-outcome-permanent-transient", "verify", "§10.3.1", "permanent and exhausted transient failures → failed-perm",
+    [stateToOutcome("vet-failed", "permanent"), stateToOutcome("negotiate-failed", "transient")], ["failed-perm", "failed-perm"]);
+  rec("verify-outcome-counterparty-atomicity", "verify", "§10.3.1", "counterparty and settlement-atomicity failures → failed-counterparty",
+    [stateToOutcome("commit-failed", "counterparty"), stateToOutcome("settle-failed", "settlement-atomicity")], ["failed-counterparty", "failed-counterparty"]);
+  rec("verify-outcome-failed-substrate", "verify", "§10.3.1", "failed-substrate → failed-substrate",
+    stateToOutcome("failed-substrate"), "failed-substrate");
+  rec("verify-outcome-aborts", "verify", "§10.3.1", "abort terminals map directly",
+    [stateToOutcome("aborted-by-self"), stateToOutcome("aborted-by-other")], ["aborted-by-self", "aborted-by-other"]);
+  rec("verify-outcome-invalid-null", "verify", "§10.3.1", "non-terminal or unmapped phase error has no bundle outcome",
+    [stateToOutcome("settle-pending"), stateToOutcome("settle-failed", "substrate")], [null, null]);
+
+  rec("verify-reputation-denominator", "verify", "§10.5.1", "failed-substrate is excluded from party_fault_denom",
+    {
+      bundleCount: reputation.bundleCount,
+      completionRate: reputation.metrics.completionRate,
+      counterpartyDisputeRate: reputation.metrics.counterpartyDisputeRate,
+      bundleRefs: reputation.bundleRefs.length,
+    },
+    { bundleCount: 5, completionRate: 0.25, counterpartyDisputeRate: 0.5, bundleRefs: 5 });
+  rec("verify-reputation-null-not-zero", "verify", "§10.5.1", "denominator zero returns null metrics, never zero",
+    {
+      bundleCount: substrateOnly.bundleCount,
+      completionRate: substrateOnly.metrics.completionRate,
+      counterpartyDisputeRate: substrateOnly.metrics.counterpartyDisputeRate,
+      completionIsZero: substrateOnly.metrics.completionRate === 0,
+      disputeIsZero: substrateOnly.metrics.counterpartyDisputeRate === 0,
+    },
+    { bundleCount: 1, completionRate: null, counterpartyDisputeRate: null, completionIsZero: false, disputeIsZero: false });
+  rec("verify-reputation-window", "verify", "§10.5.1", "window filtering excludes out-of-window bundles from scoped count",
+    deriveReputation(VERIFY_BUYER_CLAIM, anchoredBuyer, VERIFY_REPUTATION_WINDOW_END + 1, VERIFY_REPUTATION_WINDOW_END + 2_000, VERIFY_REPUTATION_COMPUTED_AT).bundleCount,
+    1);
+  rec("verify-reputation-ratings-volume-l3-null", "verify", "§10.5.1", "L3 leaves rating/volume resolution unset without a resolver",
+    {
+      averageBuyerRating: reputation.metrics.averageBuyerRating,
+      averageSellerRating: reputation.metrics.averageSellerRating,
+      observedTransactionalVolume: reputation.metrics.observedTransactionalVolume,
+    },
+    { averageBuyerRating: null, averageSellerRating: null, observedTransactionalVolume: [] });
+  rec("verify-lookup-cross-session-jobid-ignored", "verify", "§10.4.3(a)", "a fetched bundle whose embedded jobId ≠ the looked-up jobId is ignored → absent (cross-session replay/misreturn)",
+    crossSessionVerdict, "absent");
+  rec("verify-reputation-no-double-count", "verify", "§10.5.1", "both two-sided copies of one unified session, scored for buyer → counted once",
+    { bundleCount: noDoubleCount.bundleCount, bundleRefs: noDoubleCount.bundleRefs.length }, { bundleCount: 1, bundleRefs: 1 });
+  rec("verify-reputation-abort-provenance", "verify", "§10.4.3/§10.11", "buyer-anchored bundles scored for the SELLER do not fault the seller (abort outcome is anchorer-relative)",
+    { bundleCount: abortProvenance.bundleCount, counterpartyDisputeRate: abortProvenance.metrics.counterpartyDisputeRate },
+    { bundleCount: 0, counterpartyDisputeRate: null });
+  rec("verify-one-sided-role-signature-binding", "verify", "§10.4.2/§10.11", "a bundle at the BUYER address NOT signed by the expected buyer claim is rejected → absent (anchoring binds to the externally-known party, NOT to self-declared/relabelled `parties` roles)",
+    misanchoredVerdict, "absent");
+  rec("verify-one-sided-unverified-signature-absent", "verify", "§10.4.2/§10.11", "a present side whose role signature does NOT verify (wrong/forged key) is not classified present → absent (no abort provenance from unverifiable storage)",
+    unverifiedSigVerdict, "absent");
+
+  golden["verify"] = {
+    status: "golden — reference-verifier-accepted + byte-stable",
+    fixtures: {
+      divergentBuyer: "conformance/fixtures/attestation-bundle-0004.json",
+      divergentSeller: "conformance/fixtures/attestation-bundle-0004-seller.json",
+      oneSided: "conformance/fixtures/session-bundle-one-sided.json",
+      reputationSet: "conformance/fixtures/session-bundles-reputation.json",
+    },
+    jobIds: {
+      divergent: VERIFY_DIVERGENT_JOB_ID,
+      oneSided: VERIFY_ONE_SIDED_JOB_ID,
+      reputation: verifySession.reputationBundles.map((bundle) => bundle.jobId),
+    },
+    decisions: verifySession.decisions,
+    verdicts: {
+      absent: "absent",
+      unified: "unified",
+      oneSided: "one-sided",
+      divergent: "divergent",
+    },
+    reputation: {
+      windowStart: VERIFY_REPUTATION_WINDOW_START,
+      windowEnd: VERIFY_REPUTATION_WINDOW_END,
+      computedAt: VERIFY_REPUTATION_COMPUTED_AT,
+      bundleCount: reputation.bundleCount,
+      metrics: reputation.metrics,
+    },
+    consistencyChecks: {
+      crossSessionJobIdIgnored: crossSessionVerdict,
+      unifiedNoDoubleCountBundleCount: noDoubleCount.bundleCount,
+      sellerAbortProvenanceBundleCount: abortProvenance.bundleCount,
+      sellerAbortProvenanceDisputeRate: abortProvenance.metrics.counterpartyDisputeRate,
+      misanchoredRoleSignatureRejected: misanchoredVerdict,
+      unverifiedSignatureRejected: unverifiedSigVerdict,
+    },
+    seeds: verifySession.seeds,
+    publicKeys: verifySession.publicKeys,
+  };
+}
+
 // ── report + emit ────────────────────────────────────────────────────────────
 const RESET = "\x1b[0m", GREEN = "\x1b[32m", RED = "\x1b[31m", DIM = "\x1b[2m";
 let passed = 0;
@@ -739,7 +974,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
@@ -749,6 +984,16 @@ if (EMIT) {
   writeFileSync(join(fixturesDir, "attestation-bundle-0004.json"), JSON.stringify(bundle0004.bundle, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "attestation-bundle-0004-seller.json"), JSON.stringify(bundle0004Seller.bundle, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "attestation-bundle-htlc9.json"), JSON.stringify(bundleHtlc9.bundle, null, 2) + "\n");
+  writeFileSync(join(fixturesDir, "session-bundle-one-sided.json"), JSON.stringify(verifySession.oneSidedBuyer, null, 2) + "\n");
+  writeFileSync(join(fixturesDir, "session-bundles-reputation.json"), JSON.stringify({
+    windowStart: VERIFY_REPUTATION_WINDOW_START,
+    windowEnd: VERIFY_REPUTATION_WINDOW_END,
+    computedAt: VERIFY_REPUTATION_COMPUTED_AT,
+    partyPrimaryClaim: VERIFY_BUYER_CLAIM,
+    bundles: verifySession.reputationBundles,
+    publicKeys: verifySession.publicKeys,
+    seeds: verifySession.seeds,
+  }, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "settlement-evidence-payment-success.json"), JSON.stringify({
     result: settlementPayment.result,
     evidence: settlementPayment.evidence,

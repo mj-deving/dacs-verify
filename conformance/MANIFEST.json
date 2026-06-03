@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "76 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area; byte-stable and reference-verifier-accepted.",
+    "golden": "107 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area + verify area; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -730,6 +730,350 @@
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": "pass"
+    },
+    {
+      "id": "verify-address-buyer",
+      "area": "verify",
+      "spec": "§10.4.2",
+      "summary": "buyer bundle address is stor-{sha256(jobId + \"-bundle-buyer\")}",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "stor-c7bc689288bad9d6f448ca14c9aa949a4c9574a317f4a591c7f9486f4f7a6b8f"
+    },
+    {
+      "id": "verify-address-role-specific",
+      "area": "verify",
+      "spec": "§10.4.2",
+      "summary": "buyer/seller/orchestrator addresses are role-specific",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        true,
+        true
+      ]
+    },
+    {
+      "id": "verify-lookup-both",
+      "area": "verify",
+      "spec": "§10.4.3(a)",
+      "summary": "two-sided lookup fetches both expected addresses",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "buyer": true,
+        "seller": true
+      }
+    },
+    {
+      "id": "verify-lookup-one",
+      "area": "verify",
+      "spec": "§10.4.3(a)",
+      "summary": "two-sided lookup preserves a one-sided fetch result",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "buyer": true,
+        "seller": false
+      }
+    },
+    {
+      "id": "verify-lookup-none",
+      "area": "verify",
+      "spec": "§10.4.3(a)",
+      "summary": "two-sided lookup returns no sides when both addresses are absent",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "buyer": false,
+        "seller": false
+      }
+    },
+    {
+      "id": "verify-consume-absent",
+      "area": "verify",
+      "spec": "§10.4.3(a)",
+      "summary": "no bundles at either expected address → absent",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "verdict": "absent"
+      }
+    },
+    {
+      "id": "verify-consume-unified",
+      "area": "verify",
+      "spec": "§10.4.3(c)",
+      "summary": "both present and bundleHash-equal → unified",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "verdict": "unified",
+        "equalHashes": true,
+        "buyerDecision": "pass",
+        "sellerDecision": "pass"
+      }
+    },
+    {
+      "id": "verify-consume-one-sided",
+      "area": "verify",
+      "spec": "§10.4.3(b)/§10.11",
+      "summary": "one present side → missing side aborted-by-self; present side aborted-by-other",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "verdict": "one-sided",
+        "buyerDecision": "pass",
+        "buyerOutcome": "aborted-by-other",
+        "buyerHash": "7495699f164954ac6d287e3ff48d0a76d796fbc014cfd8137d99d2eb5be6a818",
+        "abortedBySelfRole": "seller",
+        "abortedByOtherRole": "buyer"
+      }
+    },
+    {
+      "id": "verify-consume-divergent",
+      "area": "verify",
+      "spec": "§10.4.3(d)",
+      "summary": "canonically divergent bundles are retained for per-party policy",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "verdict": "divergent",
+        "buyerDecision": "pass",
+        "sellerDecision": "pass",
+        "distinctHashes": true,
+        "notOutcomeEnum": true
+      }
+    },
+    {
+      "id": "verify-st-draft-vet-legal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-1",
+      "summary": "draft → vet-pending is legal",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "verify-st-vet-abort-legal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-1",
+      "summary": "vet-pending → aborted-by-self is legal",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "verify-st-settle-final-legal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-1",
+      "summary": "settle-completed → finalised is legal",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "verify-st-paused-resume-legal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-7",
+      "summary": "substrate-failure-paused may resume to a pending phase",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "verify-st-negotiate-after-commit-illegal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-1",
+      "summary": "commit-completed → negotiate-pending is illegal",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "verify-st-terminal-forward-illegal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-6",
+      "summary": "finalised → rate-pending is illegal",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "verify-st-paused-final-illegal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-7",
+      "summary": "substrate-failure-paused → finalised is illegal",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "verify-outcome-finalised",
+      "area": "verify",
+      "spec": "§10.3.1",
+      "summary": "finalised → completed",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "completed"
+    },
+    {
+      "id": "verify-outcome-permanent-transient",
+      "area": "verify",
+      "spec": "§10.3.1",
+      "summary": "permanent and exhausted transient failures → failed-perm",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        "failed-perm",
+        "failed-perm"
+      ]
+    },
+    {
+      "id": "verify-outcome-counterparty-atomicity",
+      "area": "verify",
+      "spec": "§10.3.1",
+      "summary": "counterparty and settlement-atomicity failures → failed-counterparty",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        "failed-counterparty",
+        "failed-counterparty"
+      ]
+    },
+    {
+      "id": "verify-outcome-failed-substrate",
+      "area": "verify",
+      "spec": "§10.3.1",
+      "summary": "failed-substrate → failed-substrate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "failed-substrate"
+    },
+    {
+      "id": "verify-outcome-aborts",
+      "area": "verify",
+      "spec": "§10.3.1",
+      "summary": "abort terminals map directly",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        "aborted-by-self",
+        "aborted-by-other"
+      ]
+    },
+    {
+      "id": "verify-outcome-invalid-null",
+      "area": "verify",
+      "spec": "§10.3.1",
+      "summary": "non-terminal or unmapped phase error has no bundle outcome",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        null,
+        null
+      ]
+    },
+    {
+      "id": "verify-reputation-denominator",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "failed-substrate is excluded from party_fault_denom",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 5,
+        "completionRate": 0.25,
+        "counterpartyDisputeRate": 0.5,
+        "bundleRefs": 5
+      }
+    },
+    {
+      "id": "verify-reputation-null-not-zero",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "denominator zero returns null metrics, never zero",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 1,
+        "completionRate": null,
+        "counterpartyDisputeRate": null,
+        "completionIsZero": false,
+        "disputeIsZero": false
+      }
+    },
+    {
+      "id": "verify-reputation-window",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "window filtering excludes out-of-window bundles from scoped count",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": 1
+    },
+    {
+      "id": "verify-reputation-ratings-volume-l3-null",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "L3 leaves rating/volume resolution unset without a resolver",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "averageBuyerRating": null,
+        "averageSellerRating": null,
+        "observedTransactionalVolume": []
+      }
+    },
+    {
+      "id": "verify-lookup-cross-session-jobid-ignored",
+      "area": "verify",
+      "spec": "§10.4.3(a)",
+      "summary": "a fetched bundle whose embedded jobId ≠ the looked-up jobId is ignored → absent (cross-session replay/misreturn)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "absent"
+    },
+    {
+      "id": "verify-reputation-no-double-count",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "both two-sided copies of one unified session, scored for buyer → counted once",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 1,
+        "bundleRefs": 1
+      }
+    },
+    {
+      "id": "verify-reputation-abort-provenance",
+      "area": "verify",
+      "spec": "§10.4.3/§10.11",
+      "summary": "buyer-anchored bundles scored for the SELLER do not fault the seller (abort outcome is anchorer-relative)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 0,
+        "counterpartyDisputeRate": null
+      }
+    },
+    {
+      "id": "verify-one-sided-role-signature-binding",
+      "area": "verify",
+      "spec": "§10.4.2/§10.11",
+      "summary": "a bundle at the BUYER address NOT signed by the expected buyer claim is rejected → absent (anchoring binds to the externally-known party, NOT to self-declared/relabelled `parties` roles)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "absent"
+    },
+    {
+      "id": "verify-one-sided-unverified-signature-absent",
+      "area": "verify",
+      "spec": "§10.4.2/§10.11",
+      "summary": "a present side whose role signature does NOT verify (wrong/forged key) is not classified present → absent (no abort provenance from unverifiable storage)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "absent"
     }
   ]
 }
