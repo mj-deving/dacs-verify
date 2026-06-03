@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "46 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure; byte-stable and reference-verifier-accepted.",
+    "golden": "74 vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -459,6 +459,258 @@
       "summary": "a transcript with an unverifiable member signature → FAIL (authenticity)",
       "status": "golden",
       "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-payment-pass",
+      "area": "settlement",
+      "spec": "§14.4",
+      "summary": "pay-evm-erc20 success evidence passes PC-1..PC-6 + dacs-4-evidence signature",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "pass"
+    },
+    {
+      "id": "settlement-delivery-pass",
+      "area": "settlement",
+      "spec": "§14.4",
+      "summary": "deliver-storage-program success evidence passes with deliverable anchor and no settlementFinality",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "pass"
+    },
+    {
+      "id": "settlement-currency-mismatch-not-rejected-fail",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-5",
+      "summary": "amount.currency not resolved by rail.asset and handler settled → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-success-payment-missing-finality-fail",
+      "area": "settlement",
+      "spec": "§9.7 PC-6",
+      "summary": "success payment evidence missing settlementFinality → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-delivery-with-finality-fail",
+      "area": "settlement",
+      "spec": "§9.7 PC-6",
+      "summary": "delivery evidence carrying settlementFinality → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-ok-true-errorclass-fail",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-4",
+      "summary": "ok:true with errorClass present → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-ok-false-no-errorclass-fail",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-4",
+      "summary": "ok:false without errorClass → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-wrong-anchor-fail",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-2",
+      "summary": "result.attestationRef id not at expected dacs4 payment anchor → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-attestationref-hash-mismatch-fail",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-3",
+      "summary": "result.attestationRef contentHash not equal evidenceHash(evidence) → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-failure-no-reason-fail",
+      "area": "settlement",
+      "spec": "§9.7",
+      "summary": "failure evidence without non-empty reason → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-wrong-signer-key-fail",
+      "area": "settlement",
+      "spec": "§9.7",
+      "summary": "resolved key is well-formed but not the signing key → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-malformed-key-error",
+      "area": "settlement",
+      "spec": "§9.7",
+      "summary": "resolved signer key is not 32 bytes → ERROR",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "error"
+    },
+    {
+      "id": "settlement-unresolvable-key-indeterminate",
+      "area": "settlement",
+      "spec": "§9.7",
+      "summary": "signer key cannot be resolved → INDETERMINATE",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "indeterminate"
+    },
+    {
+      "id": "settlement-phase-rail-mismatch-fail",
+      "area": "settlement",
+      "spec": "§9.4.1/§9.14",
+      "summary": "evidence.phase (pay-solana-spl) ≠ pinned rail.phaseHandler (pay-evm-erc20) → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-txrefs-mismatch-fail",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-1/PC-3",
+      "summary": "handler-return txRefs ≠ signed evidence.paymentTxRefs → FAIL (signature covers paymentTxRefs only)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-noncanonical-amount-fail",
+      "area": "settlement",
+      "spec": "§14.4 CD-1",
+      "summary": "non-canonical PriceTerm.amount (\"1.50\") → FAIL (CD-1 minimal-form)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-nonpositive-amount-fail",
+      "area": "settlement",
+      "spec": "§9.3",
+      "summary": "non-positive PriceTerm.amount (\"0\") → FAIL (amount MUST be > 0)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-wrong-attestation-kind-fail",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-3",
+      "summary": "attestationRef.kind ≠ dacs-4-evidence (mislabelled as dacs-5-bundle) → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-non-orchestrator-signer-fail",
+      "area": "settlement",
+      "spec": "§9.7",
+      "summary": "evidence signed by a non-orchestrator claim (key resolves) ≠ expected orchestrator → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-success-missing-paymenttxrefs-fail",
+      "area": "settlement",
+      "spec": "§9.5.2",
+      "summary": "success payment evidence omitting paymentTxRefs → FAIL (audit value)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-success-missing-paymentamount-fail",
+      "area": "settlement",
+      "spec": "§9.7",
+      "summary": "success payment evidence omitting paymentAmount → FAIL (actual settled amount required)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-delivery-missing-deliverable-fail",
+      "area": "settlement",
+      "spec": "§9.6",
+      "summary": "deliver-storage-program success omitting deliverableContentHash/anchor → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-delivery-malformed-contenthash-fail",
+      "area": "settlement",
+      "spec": "§9.6",
+      "summary": "delivery deliverableContentHash not 64-hex (\"not-a-hash\") → FAIL (content-addressing)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-storage-anchored-as-entitlement-fail",
+      "area": "settlement",
+      "spec": "§9.6",
+      "summary": "deliver-storage-program anchored at dacs4:entitlement namespace → FAIL (phase-specific anchor)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-negative-fee-fail",
+      "area": "settlement",
+      "spec": "§9.7",
+      "summary": "negative paymentFee (\"-1\") → FAIL (a fee may be 0, never negative)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-underpayment-vs-agreement-fail",
+      "area": "settlement",
+      "spec": "§9.5.1/PIPE-5",
+      "summary": "paymentInput.amount (1 USDC) ≠ agreement.terms.price (5 USDC) → FAIL (underpayment)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-incoherent-rail-type-handler-fail",
+      "area": "settlement",
+      "spec": "§9.4.3 RD-5",
+      "summary": "rail railType evm-erc20 with phaseHandler pay-solana-spl → FAIL (incoherent rail)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-rail-network-mismatch-fail",
+      "area": "settlement",
+      "spec": "§9.4.3 RD-5",
+      "summary": "evm-erc20 rail with a solana network → FAIL (railType↔asset/network coherence)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
       "want": "fail"
     }
   ]

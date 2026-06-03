@@ -60,6 +60,13 @@ import {
   type DisclosureInput,
 } from "../src/dacsx/index.ts";
 import { verifyBundle } from "../src/dacs5/index.ts";
+import {
+  evidenceHash,
+  verifySettlementEvidence,
+  type PaymentPhaseInput,
+  type PhaseHandlerResult,
+  type SettlementEvidence,
+} from "../src/dacs4/index.ts";
 import { keypairFromSeed, signArtifact, type Keypair } from "../examples/issuer-kit.ts";
 import {
   ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF,
@@ -67,6 +74,11 @@ import {
   buildAttestationBundle0004Seller,
   buildAttestationBundleHtlc9,
 } from "../examples/attestation-bundle-0004.ts";
+import {
+  SETTLEMENT_ORCHESTRATOR_CLAIM,
+  buildSettlementDeliverySuccess,
+  buildSettlementPaymentSuccess,
+} from "../examples/settlement-evidence.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EMIT = process.argv.includes("--emit");
@@ -80,11 +92,16 @@ const reasonOf = (area: string): string =>
 const bundle0004 = buildAttestationBundle0004();
 const bundle0004Seller = buildAttestationBundle0004Seller();
 const bundleHtlc9 = buildAttestationBundleHtlc9();
+const settlementPayment = buildSettlementPaymentSuccess();
+const settlementDelivery = buildSettlementDeliverySuccess();
 const bundle0004Keys: Record<ClaimReference, Uint8Array> = Object.fromEntries(
   Object.entries(bundle0004.publicKeys).map(([claim, key]) => [claim, new Uint8Array(Buffer.from(key, "base64url"))]),
 ) as Record<ClaimReference, Uint8Array>;
 const bundleHtlc9Keys: Record<ClaimReference, Uint8Array> = Object.fromEntries(
   Object.entries(bundleHtlc9.publicKeys).map(([claim, key]) => [claim, new Uint8Array(Buffer.from(key, "base64url"))]),
+) as Record<ClaimReference, Uint8Array>;
+const settlementKeys: Record<ClaimReference, Uint8Array> = Object.fromEntries(
+  Object.entries(settlementPayment.publicKeys).map(([claim, key]) => [claim, new Uint8Array(Buffer.from(key, "base64url"))]),
 ) as Record<ClaimReference, Uint8Array>;
 
 // ── tiny harness ─────────────────────────────────────────────────────────────
@@ -488,6 +505,198 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   };
 }
 
+// ── §14.4 — DACS-4 settlement evidence ──────────────────────────────────────
+{
+  const resolve = (claim: ClaimReference): Uint8Array | undefined => settlementKeys[claim];
+  const signSettlement = (unsigned: Omit<SettlementEvidence, "signature">): SettlementEvidence => {
+    const orchestrator = keypairFromSeed("e4".repeat(32));
+    return {
+      ...unsigned,
+      signature: {
+        algorithm: "ed25519",
+        signer: SETTLEMENT_ORCHESTRATOR_CLAIM,
+        value: signArtifact("dacs-evidence:v1:", unsigned as unknown as Record<string, unknown>, orchestrator.privateKey, ["signature"]),
+      },
+    };
+  };
+  const refreshRef = (result: PhaseHandlerResult, evidence: SettlementEvidence): PhaseHandlerResult => ({
+    ...result,
+    attestationRef: { ...result.attestationRef!, contentHash: evidenceHash(evidence) },
+  });
+  const paymentCase = (over: {
+    result?: Partial<PhaseHandlerResult>;
+    evidence?: Partial<Omit<SettlementEvidence, "signature">>;
+    paymentInput?: (input: PaymentPhaseInput) => PaymentPhaseInput;
+    refreshHash?: boolean;
+  } = {}) => {
+    const { signature: _signature, ...unsignedBase } = settlementPayment.evidence;
+    const evidence = signSettlement({ ...unsignedBase, ...over.evidence });
+    const paymentInput = over.paymentInput?.(settlementPayment.paymentInput) ?? settlementPayment.paymentInput;
+    const resultBase = over.refreshHash === false ? settlementPayment.result : refreshRef(settlementPayment.result, evidence);
+    const result = { ...resultBase, ...over.result };
+    return { result, evidence, paymentInput };
+  };
+  const decide = (input: { result: PhaseHandlerResult; evidence: SettlementEvidence; expectedOrchestrator?: ClaimReference; paymentInput?: PaymentPhaseInput; resolveKey?: (claim: ClaimReference) => Uint8Array | null | undefined }): string =>
+    verifySettlementEvidence({
+      result: input.result,
+      evidence: input.evidence,
+      expectedOrchestrator: input.expectedOrchestrator ?? SETTLEMENT_ORCHESTRATOR_CLAIM,
+      ...(input.paymentInput !== undefined ? { paymentInput: input.paymentInput } : {}),
+      resolveKey: input.resolveKey ?? resolve,
+    });
+
+  rec("settlement-payment-pass", "settlement", "§14.4", "pay-evm-erc20 success evidence passes PC-1..PC-6 + dacs-4-evidence signature",
+    decide(settlementPayment), "pass");
+  rec("settlement-delivery-pass", "settlement", "§14.4", "deliver-storage-program success evidence passes with deliverable anchor and no settlementFinality",
+    decide(settlementDelivery), "pass");
+
+  const currencyMismatch = paymentCase({
+    evidence: { paymentAmount: { amount: "5", currency: "DAI" } },
+    paymentInput: (input) => ({ ...input, amount: { amount: "5", currency: "DAI" } }),
+  });
+  rec("settlement-currency-mismatch-not-rejected-fail", "settlement", "§9.5.1 PC-5", "amount.currency not resolved by rail.asset and handler settled → FAIL",
+    decide(currencyMismatch), "fail");
+
+  rec("settlement-success-payment-missing-finality-fail", "settlement", "§9.7 PC-6", "success payment evidence missing settlementFinality → FAIL",
+    decide(paymentCase({ evidence: { settlementFinality: undefined } })), "fail");
+
+  const { signature: _deliverySignature, ...deliveryUnsigned } = settlementDelivery.evidence;
+  const deliveryWithFinality = signSettlement({
+    ...deliveryUnsigned,
+    settlementFinality: { model: "provider-receipt", finalityObservedAt: 1_780_014_500_000 },
+  });
+  rec("settlement-delivery-with-finality-fail", "settlement", "§9.7 PC-6", "delivery evidence carrying settlementFinality → FAIL",
+    decide({ result: refreshRef(settlementDelivery.result, deliveryWithFinality), evidence: deliveryWithFinality }), "fail");
+
+  rec("settlement-ok-true-errorclass-fail", "settlement", "§9.5.1 PC-4", "ok:true with errorClass present → FAIL",
+    decide(paymentCase({ result: { errorClass: "permanent" } })), "fail");
+
+  rec("settlement-ok-false-no-errorclass-fail", "settlement", "§9.5.1 PC-4", "ok:false without errorClass → FAIL",
+    decide(paymentCase({
+      result: { ok: false, errorClass: undefined },
+      evidence: { outcome: "failure", reason: "rail-rejected", settlementFinality: undefined },
+    })), "fail");
+
+  rec("settlement-wrong-anchor-fail", "settlement", "§9.5.1 PC-2", "result.attestationRef id not at expected dacs4 payment anchor → FAIL",
+    decide(paymentCase({ result: { attestationRef: { ...settlementPayment.result.attestationRef!, id: "dacs4:payment:wrong:rail" } } })), "fail");
+
+  rec("settlement-attestationref-hash-mismatch-fail", "settlement", "§9.5.1 PC-3", "result.attestationRef contentHash not equal evidenceHash(evidence) → FAIL",
+    decide(paymentCase({ refreshHash: false, evidence: { paymentAmount: { amount: "6", currency: "USDC" } } })), "fail");
+
+  rec("settlement-failure-no-reason-fail", "settlement", "§9.7", "failure evidence without non-empty reason → FAIL",
+    decide(paymentCase({
+      result: { ok: false, errorClass: "permanent" },
+      evidence: { outcome: "failure", reason: undefined, settlementFinality: undefined },
+    })), "fail");
+
+  const wrong = keypairFromSeed("f5".repeat(32));
+  rec("settlement-wrong-signer-key-fail", "settlement", "§9.7", "resolved key is well-formed but not the signing key → FAIL",
+    decide({ ...settlementPayment, resolveKey: () => wrong.publicKeyRaw }), "fail");
+
+  rec("settlement-malformed-key-error", "settlement", "§9.7", "resolved signer key is not 32 bytes → ERROR",
+    decide({ ...settlementPayment, resolveKey: () => new Uint8Array([1, 2, 3]) }), "error");
+
+  rec("settlement-unresolvable-key-indeterminate", "settlement", "§9.7", "signer key cannot be resolved → INDETERMINATE",
+    decide({ ...settlementPayment, resolveKey: () => undefined }), "indeterminate");
+
+  rec("settlement-phase-rail-mismatch-fail", "settlement", "§9.4.1/§9.14", "evidence.phase (pay-solana-spl) ≠ pinned rail.phaseHandler (pay-evm-erc20) → FAIL",
+    decide(paymentCase({ evidence: { phase: "pay-solana-spl" } })), "fail");
+
+  rec("settlement-txrefs-mismatch-fail", "settlement", "§9.5.1 PC-1/PC-3", "handler-return txRefs ≠ signed evidence.paymentTxRefs → FAIL (signature covers paymentTxRefs only)",
+    decide(paymentCase({ result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xUNSIGNED", kind: "payment" }] } })), "fail");
+
+  rec("settlement-noncanonical-amount-fail", "settlement", "§14.4 CD-1", "non-canonical PriceTerm.amount (\"1.50\") → FAIL (CD-1 minimal-form)",
+    decide(paymentCase({ evidence: { paymentAmount: { amount: "1.50", currency: "USDC" } }, paymentInput: (i) => ({ ...i, amount: { amount: "1.50", currency: "USDC" } }) })), "fail");
+
+  rec("settlement-nonpositive-amount-fail", "settlement", "§9.3", "non-positive PriceTerm.amount (\"0\") → FAIL (amount MUST be > 0)",
+    decide(paymentCase({ evidence: { paymentAmount: { amount: "0", currency: "USDC" } }, paymentInput: (i) => ({ ...i, amount: { amount: "0", currency: "USDC" } }) })), "fail");
+
+  rec("settlement-wrong-attestation-kind-fail", "settlement", "§9.5.1 PC-3", "attestationRef.kind ≠ dacs-4-evidence (mislabelled as dacs-5-bundle) → FAIL",
+    decide(paymentCase({ result: { attestationRef: { ...settlementPayment.result.attestationRef!, kind: "dacs-5-bundle" } } })), "fail");
+
+  // signer ≠ authorized orchestrator: signed by an attacker DID whose key resolves, but not the expected orchestrator.
+  const attacker = keypairFromSeed("99".repeat(32));
+  const { signature: _attackerSig, ...attackerUnsigned } = settlementPayment.evidence;
+  const attackerEvidence: SettlementEvidence = {
+    ...attackerUnsigned,
+    signature: { algorithm: "ed25519", signer: "did:attacker:x", value: signArtifact("dacs-evidence:v1:", attackerUnsigned as unknown as Record<string, unknown>, attacker.privateKey, ["signature"]) },
+  };
+  rec("settlement-non-orchestrator-signer-fail", "settlement", "§9.7", "evidence signed by a non-orchestrator claim (key resolves) ≠ expected orchestrator → FAIL",
+    decide({ result: refreshRef(settlementPayment.result, attackerEvidence), evidence: attackerEvidence, paymentInput: settlementPayment.paymentInput, resolveKey: (c) => (c === "did:attacker:x" ? attacker.publicKeyRaw : resolve(c)) }), "fail");
+
+  rec("settlement-success-missing-paymenttxrefs-fail", "settlement", "§9.5.2", "success payment evidence omitting paymentTxRefs → FAIL (audit value)",
+    decide(paymentCase({ result: { txRefs: undefined }, evidence: { paymentTxRefs: undefined } })), "fail");
+
+  rec("settlement-success-missing-paymentamount-fail", "settlement", "§9.7", "success payment evidence omitting paymentAmount → FAIL (actual settled amount required)",
+    decide(paymentCase({ evidence: { paymentAmount: undefined } })), "fail");
+
+  const { signature: _delMissingSig, ...delMissingUnsigned } = settlementDelivery.evidence;
+  const deliveryMissingDeliverable = signSettlement({ ...delMissingUnsigned, deliverableContentHash: undefined, deliverableAnchor: undefined });
+  rec("settlement-delivery-missing-deliverable-fail", "settlement", "§9.6", "deliver-storage-program success omitting deliverableContentHash/anchor → FAIL",
+    decide({ result: refreshRef(settlementDelivery.result, deliveryMissingDeliverable), evidence: deliveryMissingDeliverable }), "fail");
+
+  const deliveryBadHash = signSettlement({ ...delMissingUnsigned, deliverableContentHash: "not-a-hash" });
+  rec("settlement-delivery-malformed-contenthash-fail", "settlement", "§9.6", "delivery deliverableContentHash not 64-hex (\"not-a-hash\") → FAIL (content-addressing)",
+    decide({ result: refreshRef(settlementDelivery.result, deliveryBadHash), evidence: deliveryBadHash }), "fail");
+
+  rec("settlement-storage-anchored-as-entitlement-fail", "settlement", "§9.6", "deliver-storage-program anchored at dacs4:entitlement namespace → FAIL (phase-specific anchor)",
+    decide({ result: { ...settlementDelivery.result, attestationRef: { ...settlementDelivery.result.attestationRef!, id: `dacs4:entitlement:${settlementDelivery.evidence.jobId}:0` } }, evidence: settlementDelivery.evidence }), "fail");
+
+  rec("settlement-negative-fee-fail", "settlement", "§9.7", "negative paymentFee (\"-1\") → FAIL (a fee may be 0, never negative)",
+    decide(paymentCase({ evidence: { paymentFee: { amount: "-1", currency: "USDC" } } })), "fail");
+
+  rec("settlement-underpayment-vs-agreement-fail", "settlement", "§9.5.1/PIPE-5", "paymentInput.amount (1 USDC) ≠ agreement.terms.price (5 USDC) → FAIL (underpayment)",
+    decide(paymentCase({ evidence: { paymentAmount: { amount: "1", currency: "USDC" } }, paymentInput: (i) => ({ ...i, amount: { amount: "1", currency: "USDC" } }) })), "fail");
+
+  rec("settlement-incoherent-rail-type-handler-fail", "settlement", "§9.4.3 RD-5", "rail railType evm-erc20 with phaseHandler pay-solana-spl → FAIL (incoherent rail)",
+    decide(paymentCase({ evidence: { phase: "pay-solana-spl" }, paymentInput: (i) => ({ ...i, rail: { ...i.rail, phaseHandler: "pay-solana-spl" } }) })), "fail");
+
+  rec("settlement-rail-network-mismatch-fail", "settlement", "§9.4.3 RD-5", "evm-erc20 rail with a solana network → FAIL (railType↔asset/network coherence)",
+    decide(paymentCase({ paymentInput: (i) => ({ ...i, rail: { ...i.rail, network: { kind: "solana", cluster: "mainnet" } } }) })), "fail");
+
+  golden["settlement"] = {
+    status: "golden — reference-verifier-accepted + byte-stable",
+    fixture: "conformance/fixtures/settlement-evidence-payment-success.json",
+    deliveryFixture: "conformance/fixtures/settlement-evidence-delivery-success.json",
+    jobId: settlementPayment.evidence.jobId,
+    deliveryJobId: settlementDelivery.evidence.jobId,
+    evidenceHash: settlementPayment.evidenceHash,
+    deliveryEvidenceHash: settlementDelivery.evidenceHash,
+    decisions: {
+      paymentPass: "pass",
+      deliveryPass: "pass",
+      currencyMismatchNotRejected: "fail",
+      successPaymentMissingFinality: "fail",
+      deliveryWithFinality: "fail",
+      okTrueWithErrorClass: "fail",
+      okFalseNoErrorClass: "fail",
+      wrongAnchor: "fail",
+      attestationRefHashMismatch: "fail",
+      failureNoReason: "fail",
+      wrongSignerKey: "fail",
+      malformedKey: "error",
+      unresolvableKey: "indeterminate",
+      phaseRailMismatch: "fail",
+      txRefsMismatch: "fail",
+      nonCanonicalAmount: "fail",
+      nonPositiveAmount: "fail",
+      wrongAttestationKind: "fail",
+      nonOrchestratorSigner: "fail",
+      successMissingPaymentTxRefs: "fail",
+      successMissingPaymentAmount: "fail",
+      deliveryMissingDeliverable: "fail",
+      deliveryMalformedContentHash: "fail",
+      storageAnchoredAsEntitlement: "fail",
+      negativeFee: "fail",
+      underpaymentVsAgreement: "fail",
+      incoherentRailTypeHandler: "fail",
+      railNetworkMismatch: "fail",
+    },
+    seeds: settlementPayment.seeds,
+    publicKeys: settlementPayment.publicKeys,
+  };
+}
+
 // ── report + emit ────────────────────────────────────────────────────────────
 const RESET = "\x1b[0m", GREEN = "\x1b[32m", RED = "\x1b[31m", DIM = "\x1b[2m";
 let passed = 0;
@@ -518,7 +727,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 18 dispute/disclosure + settlement area; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
@@ -528,6 +737,21 @@ if (EMIT) {
   writeFileSync(join(fixturesDir, "attestation-bundle-0004.json"), JSON.stringify(bundle0004.bundle, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "attestation-bundle-0004-seller.json"), JSON.stringify(bundle0004Seller.bundle, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "attestation-bundle-htlc9.json"), JSON.stringify(bundleHtlc9.bundle, null, 2) + "\n");
+  writeFileSync(join(fixturesDir, "settlement-evidence-payment-success.json"), JSON.stringify({
+    result: settlementPayment.result,
+    evidence: settlementPayment.evidence,
+    paymentInput: settlementPayment.paymentInput,
+    evidenceHash: settlementPayment.evidenceHash,
+    publicKeys: settlementPayment.publicKeys,
+    seeds: settlementPayment.seeds,
+  }, null, 2) + "\n");
+  writeFileSync(join(fixturesDir, "settlement-evidence-delivery-success.json"), JSON.stringify({
+    result: settlementDelivery.result,
+    evidence: settlementDelivery.evidence,
+    evidenceHash: settlementDelivery.evidenceHash,
+    publicKeys: settlementDelivery.publicKeys,
+    seeds: settlementDelivery.seeds,
+  }, null, 2) + "\n");
   writeFileSync(join(HERE, "MANIFEST.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(vectorsDir, "golden.json"), JSON.stringify(golden, null, 2) + "\n");
   console.log(`  ${DIM}emitted MANIFEST.json + vectors/golden.json${RESET}\n`);

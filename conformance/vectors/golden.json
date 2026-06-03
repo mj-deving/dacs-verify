@@ -125,5 +125,52 @@
       "transcriptUnsigned": "fail"
     },
     "inputs": "constructed deterministically in conformance/run.ts from the seeds above; dispute record points to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json"
+  },
+  "settlement": {
+    "status": "golden — reference-verifier-accepted + byte-stable",
+    "fixture": "conformance/fixtures/settlement-evidence-payment-success.json",
+    "deliveryFixture": "conformance/fixtures/settlement-evidence-delivery-success.json",
+    "jobId": "DACS-VERIFY-SETTLE-0001",
+    "deliveryJobId": "DACS-VERIFY-DELIVER-0001",
+    "evidenceHash": "b2cb07015441eb4f378361deb8f632dbd325b34fb314a236c136192e3bec2cee",
+    "deliveryEvidenceHash": "89b28b232c5217b3828d028c0d2c28fcdce535972e84010f75298eacee155efa",
+    "decisions": {
+      "paymentPass": "pass",
+      "deliveryPass": "pass",
+      "currencyMismatchNotRejected": "fail",
+      "successPaymentMissingFinality": "fail",
+      "deliveryWithFinality": "fail",
+      "okTrueWithErrorClass": "fail",
+      "okFalseNoErrorClass": "fail",
+      "wrongAnchor": "fail",
+      "attestationRefHashMismatch": "fail",
+      "failureNoReason": "fail",
+      "wrongSignerKey": "fail",
+      "malformedKey": "error",
+      "unresolvableKey": "indeterminate",
+      "phaseRailMismatch": "fail",
+      "txRefsMismatch": "fail",
+      "nonCanonicalAmount": "fail",
+      "nonPositiveAmount": "fail",
+      "wrongAttestationKind": "fail",
+      "nonOrchestratorSigner": "fail",
+      "successMissingPaymentTxRefs": "fail",
+      "successMissingPaymentAmount": "fail",
+      "deliveryMissingDeliverable": "fail",
+      "deliveryMalformedContentHash": "fail",
+      "storageAnchoredAsEntitlement": "fail",
+      "negativeFee": "fail",
+      "underpaymentVsAgreement": "fail",
+      "incoherentRailTypeHandler": "fail",
+      "railNetworkMismatch": "fail"
+    },
+    "seeds": {
+      "orchestrator": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4",
+      "payer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "payee": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+    },
+    "publicKeys": {
+      "did:demos:orchestrator": "maekceCtXQ62avDhCrkykrlD64Bd6XkRY320vgwHLkI"
+    }
   }
 }

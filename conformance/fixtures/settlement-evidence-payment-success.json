@@ -1,0 +1,115 @@
+{
+  "result": {
+    "ok": true,
+    "txRefs": [
+      {
+        "rail": "polygon-amoy-usdc",
+        "txHash": "polygon-amoy:0xsettle0001",
+        "kind": "payment"
+      }
+    ],
+    "attestationRef": {
+      "kind": "dacs-4-evidence",
+      "id": "dacs4:payment:DACS-VERIFY-SETTLE-0001:polygon-amoy-usdc",
+      "contentHash": "b2cb07015441eb4f378361deb8f632dbd325b34fb314a236c136192e3bec2cee"
+    }
+  },
+  "evidence": {
+    "evidenceVersion": "1",
+    "jobId": "DACS-VERIFY-SETTLE-0001",
+    "phase": "pay-evm-erc20",
+    "outcome": "success",
+    "paymentTxRefs": [
+      {
+        "rail": "polygon-amoy-usdc",
+        "txHash": "polygon-amoy:0xsettle0001",
+        "kind": "payment"
+      }
+    ],
+    "paymentAmount": {
+      "amount": "5",
+      "currency": "USDC"
+    },
+    "settlementFinality": {
+      "model": "block-depth",
+      "finalityBlocks": 1,
+      "finalityObservedAt": 1780014401000
+    },
+    "observedAt": 1780014400000,
+    "signature": {
+      "algorithm": "ed25519",
+      "signer": "did:demos:orchestrator",
+      "value": "JByFn40_uwsumvVHr1ZuCFhMAO7K7iGwqCGtLmhQSp2FMINyqXmK3ycA2a8oZA22h9BHwX72s0xY8QEwI5D8CQ"
+    }
+  },
+  "paymentInput": {
+    "jobId": "DACS-VERIFY-SETTLE-0001",
+    "agreement": {
+      "agreementVersion": "1",
+      "terms": {
+        "price": {
+          "amount": "5",
+          "currency": "USDC"
+        }
+      }
+    },
+    "rail": {
+      "railVersion": 1,
+      "railId": "polygon-amoy-usdc",
+      "railType": "evm-erc20",
+      "asset": {
+        "kind": "erc20",
+        "chainId": 80002,
+        "contract": "0x0000000000000000000000000000000000000001",
+        "symbol": "USDC",
+        "decimals": 6
+      },
+      "network": {
+        "kind": "evm",
+        "chainId": 80002,
+        "rpcAttestation": "evm-rpc"
+      },
+      "phaseHandler": "pay-evm-erc20",
+      "parameters": {
+        "finalityBlocks": 1
+      },
+      "availability": "mocked",
+      "governance": {
+        "proposedBy": "did:demos:orchestrator",
+        "acceptedAt": 1780014390000,
+        "anchoring": "in-code"
+      },
+      "signature": {
+        "algorithm": "ed25519",
+        "signer": "did:demos:orchestrator",
+        "value": "fixture-rail-signature"
+      }
+    },
+    "payer": {
+      "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+      "primaryClaim": "did:demos:buyer",
+      "payingKey": "did:demos:buyer"
+    },
+    "payee": {
+      "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+      "primaryClaim": "did:demos:seller",
+      "payeeAddress": "0x00000000000000000000000000000000000000aa"
+    },
+    "amount": {
+      "amount": "5",
+      "currency": "USDC"
+    },
+    "sessionContext": {
+      "route": "dacs-verify-reference"
+    }
+  },
+  "evidenceHash": "b2cb07015441eb4f378361deb8f632dbd325b34fb314a236c136192e3bec2cee",
+  "publicKeys": {
+    "did:demos:orchestrator": "maekceCtXQ62avDhCrkykrlD64Bd6XkRY320vgwHLkI"
+  },
+  "seeds": {
+    "orchestrator": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4",
+    "payer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "payee": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+  }
+}
