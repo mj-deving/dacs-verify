@@ -721,7 +721,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("bundle-0004-pass", "bundle", "§10.4", "DACS-VERIFY-0004 completed AttestationBundle verifies with buyer + seller signatures",
     verifyBundle(bundle0004.bundle, resolve), "pass");
 
-  rec("bundle-htlc9-pass", "bundle", "§10.4", "HTLC-9 AttestationBundle verifies and carries settlement-atomicity failure + destination reveal txRef",
+  rec("bundle-htlc9-pass", "bundle", "§10.4", "HTLC-9 AttestationBundle verifies and maps settlement-atomicity failure to failed-counterparty with destination reveal txRef",
     {
       decision: verifyBundle(bundleHtlc9.bundle, resolveHtlc9),
       outcome: bundleHtlc9.bundle.outcome,
@@ -729,7 +729,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       errorClass: htlc9SettlementPhase?.errorClass,
       revealRecorded: htlc9SettlementPhase?.txRefs?.some((tx) => tx.kind === "htlc-reveal" && tx.txHash === ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF) ?? false,
     },
-    { decision: "pass", outcome: "failed-substrate", phaseOutcome: "fail", errorClass: "settlement-atomicity", revealRecorded: true });
+    { decision: "pass", outcome: "failed-counterparty", phaseOutcome: "fail", errorClass: "settlement-atomicity", revealRecorded: true });
 
   const missingSeller = { ...bundle0004.bundle, signatures: bundle0004.bundle.signatures.filter((s) => s.party !== "did:demos:seller") };
   rec("bundle-required-signer-fail", "bundle", "§10.4.1", "completed bundle missing a required seller signature → FAIL",
@@ -856,9 +856,9 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   // → terminal `failed-counterparty` on window expiry; covered by the §14.5 verify-st-asymmetric-* vectors). A dispute
   // over the window-expired terminal `failed-counterparty` uses a standard remedy — there is no spec correction path to
   // assert as golden. The DACS-X prototype's `correction-ordered` remedy is now REMOVED (commit "remove spec-obsolete
-  // correction-ordered remedy"); re-framing the htlc9 fixture outcome (failed-substrate → failed-counterparty) +
-  // adopting the R5-3 ST-8 representation remains, gated on the Round-5 re-seal. ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF
-  // remains exercised by the bundle-htlc9-pass vector (structural bundle verification + reveal-txRef presence).
+  // correction-ordered remedy"); ST-8 is covered by the verify-st-asymmetric-* vectors, while
+  // ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF remains exercised by bundle-htlc9-pass for the resolved
+  // failed-counterparty terminal bundle (structural bundle verification + reveal-txRef presence).
 
   golden["dispute"] = {
     status: "golden — reference-verifier-accepted (verifyBundle) + byte-stable",

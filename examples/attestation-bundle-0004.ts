@@ -309,7 +309,7 @@ export function buildAttestationBundleHtlc9(): {
   const unsigned: Omit<AttestationBundle, "signatures"> = {
     bundleVersion: "1",
     jobId: ATTESTATION_BUNDLE_HTLC9_JOB_ID,
-    outcome: "failed-substrate",
+    outcome: "failed-counterparty",
     anchoredByRole: "buyer",
     listingRef,
     agreementRef,

@@ -1,7 +1,7 @@
 {
   "bundleVersion": "1",
   "jobId": "DACS-VERIFY-HTLC9",
-  "outcome": "failed-substrate",
+  "outcome": "failed-counterparty",
   "anchoredByRole": "buyer",
   "listingRef": {
     "listingId": "listing-dacs-verify-htlc9",
@@ -81,12 +81,12 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "rXpzoaGhz4EG8qaCwpgue4p1wRKq-gkF93-Sj_GbuYP0wK_nMfUroAWs95INscfP_k1FhKK4PZ5NEJiPic0WBQ"
+      "value": "pErKCIjrDUTrc3PAHlEhDb7dSLoK1EBMwMfChi3IWyjzzUkQA01fjesuhYyxboXaorSH8lhHFJJFSeP9w5_yAw"
     },
     {
       "party": "did:demos:seller",
       "algorithm": "ed25519",
-      "value": "rH3lZGAStL72WgYaV1tuEEM76Yo3Yhdmsw22YRBp2pIQ3Pd3DHAZwZ5wWJelNiZkMYnV_xm0XgpzDJZx-hXfDA"
+      "value": "IHigNueNTQLmegunQl2X3uYezm3aD_Ma--_b16AkbXGCM2_zcmNv4O9TlNHgovz6tGVOgu_GmPCYwnAWwFrTCQ"
     }
   ]
 }

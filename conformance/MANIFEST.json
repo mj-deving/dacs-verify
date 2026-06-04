@@ -883,12 +883,12 @@
       "id": "bundle-htlc9-pass",
       "area": "bundle",
       "spec": "§10.4",
-      "summary": "HTLC-9 AttestationBundle verifies and carries settlement-atomicity failure + destination reveal txRef",
+      "summary": "HTLC-9 AttestationBundle verifies and maps settlement-atomicity failure to failed-counterparty with destination reveal txRef",
       "status": "golden",
       "reason": "reference-verifier-accepted (verifyBundle) + byte-stable",
       "want": {
         "decision": "pass",
-        "outcome": "failed-substrate",
+        "outcome": "failed-counterparty",
         "phaseOutcome": "fail",
         "errorClass": "settlement-atomicity",
         "revealRecorded": true

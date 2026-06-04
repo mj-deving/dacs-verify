@@ -81,6 +81,7 @@ test("HTLC-9 fixture is byte-stable, verifies, and carries reveal state", () => 
   expect(htlc9FixtureText).toBe(JSON.stringify(htlc9Emitted.bundle, null, 2) + "\n");
   expect(bundleHash(htlc9Fixture)).toBe(htlc9Emitted.bundleHash);
   expect(verifyBundle(htlc9Fixture, resolve)).toBe("pass");
+  expect(htlc9Fixture.outcome).toBe("failed-counterparty");
   const phase = htlc9Fixture.phaseSummary.find((p) => p.kind === "pay-cross-chain-htlc");
   expect(phase?.outcome).toBe("fail");
   expect(phase?.errorClass).toBe("settlement-atomicity");
