@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "144 vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2); byte-stable and reference-verifier-accepted.",
+    "golden": "156 vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2) + 12 governance (§14.7 GOV-1..3); byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -561,6 +561,135 @@
         "ok": false,
         "failedAt": "price"
       }
+    },
+    {
+      "id": "gov-gov2-classify",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-2: the three §7.4.1 anchoring phases classify; an unknown phase throws",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        "in-code",
+        "single-signer",
+        "multisig",
+        true
+      ]
+    },
+    {
+      "id": "gov-gov2-incode-not-anchored",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-3 core: `in-code` (PA-1) is NOT canonically anchored; single-signer/multisig are",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        false,
+        true,
+        true
+      ]
+    },
+    {
+      "id": "gov-gov1-discloses-key",
+      "area": "governance",
+      "spec": "§14.7",
+      "summary": "GOV-1 (advisory; `represents` is a verifier-internal hint, not a spec wire-field): a consumer surfacing a key + presenting PA-2 as single-steward → ACCEPT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "ok": true
+      }
+    },
+    {
+      "id": "gov-gov1-missing-key",
+      "area": "governance",
+      "spec": "§14.7",
+      "summary": "GOV-1: a consumer that does not surface an authoritative signing key → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "gov-gov1-misrepresent-constituted",
+      "area": "governance",
+      "spec": "§12",
+      "summary": "GOV-1: presenting a single-signer (PA-2) steward as a constituted multi-party body → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "gov-gov1-constituted-ok-at-multisig",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-1: presenting a constituted body is honest only once the registry is actually multisig (PA-3)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "ok": true
+      }
+    },
+    {
+      "id": "gov-gov3-pintime-governs",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-3: a recipeVersion pinned at single-signer (PA-2) is evaluated against PIN-TIME phase, NOT the current multisig (PA-3) registry — append-only re-anchoring MUST NOT retro-upgrade a pin",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "recipeVersion": 3,
+        "evaluatedPhase": "single-signer",
+        "canonicallyAnchored": true,
+        "ok": true
+      }
+    },
+    {
+      "id": "gov-gov3-incode-pin-not-anchored",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-3: a pinned `in-code` recipeVersion evaluates as not canonically anchored",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "canonicallyAnchored": false,
+        "ok": true
+      }
+    },
+    {
+      "id": "gov-gov3-below-trust-floor",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-3: a single-signer pin under a consumer trust floor of multisig → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "gov-gov3-meets-trust-floor",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-3: a multisig pin meeting a multisig trust floor → ACCEPT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "gov-gov3-unknown-phase-rejected",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-3 fail-closed: an unrecognised pin-time phase (malformed governance.anchoring) is REJECTED, not treated as canonically anchored",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "gov-gov1-unknown-phase-rejected",
+      "area": "governance",
+      "spec": "§7.4.4",
+      "summary": "GOV-1 fail-closed: an unrecognised actualPhase is REJECTED before any disclosure decision",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
     },
     {
       "id": "bundle-0004-pass",

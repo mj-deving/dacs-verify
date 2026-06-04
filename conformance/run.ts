@@ -61,6 +61,14 @@ import {
   type ListingForValidation,
 } from "../src/dacs3/agreement.ts";
 import {
+  ANCHORING_PHASES,
+  classifyAnchoringPhase,
+  evaluatePinnedRecipe,
+  isCanonicallyAnchored,
+  validateStewardDisclosure,
+  type AnchoringPhase,
+} from "../src/dacs2/governance.ts";
+import {
   verifyDisputeFlow,
   verifyTranscriptDisclosure,
   transcriptContentHash,
@@ -450,6 +458,67 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     { ok: false, failedAt: "price" });
 
   golden["negotiate"] = { deliverableHash: dHash, band: negotiableBand("100", 10, 20) };
+}
+
+// ── §14.7 — DACS-2 Governance (GOV-1..3) ────────────────────────────────────
+{
+  const throws = (fn: () => unknown): boolean => { try { fn(); return false; } catch { return true; } };
+
+  // GOV-2 — closed-set anchoring phase classification + in-code ≠ anchored.
+  rec("gov-gov2-classify", "governance", "§7.4.4", "GOV-2: the three §7.4.1 anchoring phases classify; an unknown phase throws",
+    [...ANCHORING_PHASES.map(classifyAnchoringPhase), throws(() => classifyAnchoringPhase("constituted"))],
+    ["in-code", "single-signer", "multisig", true]);
+
+  rec("gov-gov2-incode-not-anchored", "governance", "§7.4.4", "GOV-3 core: `in-code` (PA-1) is NOT canonically anchored; single-signer/multisig are",
+    ANCHORING_PHASES.map(isCanonicallyAnchored), [false, true, true]);
+
+  // GOV-1 — steward disclosure (ADVISORY: `represents` is a verifier-internal
+  // disclosure hint, NOT a DACS wire-field; GOV-1 is a UX/disclosure obligation
+  // the spec defines no wire format for — enforced advisorily, steward owns any
+  // normative representation).
+  rec("gov-gov1-discloses-key", "governance", "§14.7", "GOV-1 (advisory; `represents` is a verifier-internal hint, not a spec wire-field): a consumer surfacing a key + presenting PA-2 as single-steward → ACCEPT",
+    validateStewardDisclosure({ authoritativeSigningKey: "ed25519:kynesys-v0.1", represents: "single-steward", actualPhase: "single-signer" }),
+    { ok: true });
+
+  rec("gov-gov1-missing-key", "governance", "§14.7", "GOV-1: a consumer that does not surface an authoritative signing key → REJECT",
+    validateStewardDisclosure({ represents: "single-steward", actualPhase: "single-signer" }).ok, false);
+
+  rec("gov-gov1-misrepresent-constituted", "governance", "§12", "GOV-1: presenting a single-signer (PA-2) steward as a constituted multi-party body → REJECT",
+    validateStewardDisclosure({ authoritativeSigningKey: "ed25519:kynesys-v0.1", represents: "constituted-body", actualPhase: "single-signer" }).ok, false);
+
+  rec("gov-gov1-constituted-ok-at-multisig", "governance", "§7.4.4", "GOV-1: presenting a constituted body is honest only once the registry is actually multisig (PA-3)",
+    validateStewardDisclosure({ authoritativeSigningKey: "multisig:dacs-wg", represents: "constituted-body", actualPhase: "multisig" }),
+    { ok: true });
+
+  // GOV-3 — pin-time anchoring-phase verification (the temporal-trust invariant).
+  rec("gov-gov3-pintime-governs", "governance", "§7.4.4", "GOV-3: a recipeVersion pinned at single-signer (PA-2) is evaluated against PIN-TIME phase, NOT the current multisig (PA-3) registry — append-only re-anchoring MUST NOT retro-upgrade a pin",
+    evaluatePinnedRecipe({ recipeVersion: 3, pinTimePhase: "single-signer", currentPhase: "multisig" }),
+    { recipeVersion: 3, evaluatedPhase: "single-signer", canonicallyAnchored: true, ok: true });
+
+  rec("gov-gov3-incode-pin-not-anchored", "governance", "§7.4.4", "GOV-3: a pinned `in-code` recipeVersion evaluates as not canonically anchored",
+    (() => { const d = evaluatePinnedRecipe({ recipeVersion: 1, pinTimePhase: "in-code" }); return { canonicallyAnchored: d.canonicallyAnchored, ok: d.ok }; })(),
+    { canonicallyAnchored: false, ok: true });
+
+  rec("gov-gov3-below-trust-floor", "governance", "§7.4.4", "GOV-3: a single-signer pin under a consumer trust floor of multisig → REJECT",
+    evaluatePinnedRecipe({ recipeVersion: 3, pinTimePhase: "single-signer", requiredMinPhase: "multisig" }).ok, false);
+
+  rec("gov-gov3-meets-trust-floor", "governance", "§7.4.4", "GOV-3: a multisig pin meeting a multisig trust floor → ACCEPT",
+    evaluatePinnedRecipe({ recipeVersion: 7, pinTimePhase: "multisig", requiredMinPhase: "multisig" }).ok, true);
+
+  // Trust-boundary fail-closed: a malformed `governance.anchoring` (a parsed/JS
+  // caller defeating the TS type) MUST be rejected, never trusted as anchored.
+  rec("gov-gov3-unknown-phase-rejected", "governance", "§7.4.4", "GOV-3 fail-closed: an unrecognised pin-time phase (malformed governance.anchoring) is REJECTED, not treated as canonically anchored",
+    throws(() => evaluatePinnedRecipe({ recipeVersion: 9, pinTimePhase: "constituted" as unknown as AnchoringPhase })), true);
+
+  rec("gov-gov1-unknown-phase-rejected", "governance", "§7.4.4", "GOV-1 fail-closed: an unrecognised actualPhase is REJECTED before any disclosure decision",
+    throws(() => validateStewardDisclosure({ authoritativeSigningKey: "ed25519:k", actualPhase: "bogus" as unknown as AnchoringPhase })), true);
+
+  golden["governance"] = {
+    status: "golden — reference-verifier-accepted + byte-stable",
+    phases: ANCHORING_PHASES,
+    pinTimeGoverns: evaluatePinnedRecipe({ recipeVersion: 3, pinTimePhase: "single-signer", currentPhase: "multisig" }),
+    gov1Note: "GOV-1 enforced advisorily — `represents` is a verifier-internal disclosure hint, not a DACS wire-field; the steward owns any normative representation.",
+  };
 }
 
 // ── §10.4 — DACS-5 AttestationBundle verification ───────────────────────────
@@ -1191,7 +1260,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2); byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2) + 12 governance (§14.7 GOV-1..3); byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),

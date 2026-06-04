@@ -31,6 +31,21 @@
       "upper": "120"
     }
   },
+  "governance": {
+    "status": "golden — reference-verifier-accepted + byte-stable",
+    "phases": [
+      "in-code",
+      "single-signer",
+      "multisig"
+    ],
+    "pinTimeGoverns": {
+      "recipeVersion": 3,
+      "evaluatedPhase": "single-signer",
+      "canonicallyAnchored": true,
+      "ok": true
+    },
+    "gov1Note": "GOV-1 enforced advisorily — `represents` is a verifier-internal disclosure hint, not a DACS wire-field; the steward owns any normative representation."
+  },
   "bundle": {
     "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
     "fixture": "conformance/fixtures/attestation-bundle-0004.json",
