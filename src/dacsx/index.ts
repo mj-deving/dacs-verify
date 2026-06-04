@@ -5,4 +5,5 @@ export * from "./separators.ts";
 export * from "./types.ts";
 export * from "./dispute.ts";
 export * from "./flow.ts";
+export * from "./predicates.ts";
 export * from "./disclosure.ts";

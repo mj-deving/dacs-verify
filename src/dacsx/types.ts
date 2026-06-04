@@ -76,27 +76,16 @@ export interface NoFault {
   kind: "no-fault";
 }
 
-/**
- * Arbitrator orders a §9.7.1 SettlementAmendment of type `correction` — the
- * closure HTLC-9 / §9.8 explicitly DEFERS to DACS-X for an asymmetric
- * cross-chain settlement (`dest-revealed-source-unclaimed`: the payee was paid
- * on the destination chain but the source claim failed). Per HTLC-9 this is
- * NEVER a refund — a refund would double-pay a payee who already received on the
- * destination chain. This is the settlement→dispute seam: §9.5.4/§9.8 specify
- * how to *represent* the asymmetric state but route its *resolution* here.
- */
-export interface CorrectionAmendmentOrder {
-  kind: "correction-ordered";
-  /** HTLC-9 asymmetric settlement MUST close as a failure (§9.8). */
-  correctedOutcome: "failure";
-  /** Structured failure reason — e.g. the HTLC-9 asymmetric state. */
-  reason: "dest-revealed-source-unclaimed" | string;
-  /** txRef of the destination-chain preimage reveal (`htlc-reveal`), already in
-   *  the session's paymentTxRefs (§9.5.4 HTLC-9). */
-  revealTxRef: string;
-}
+// NOTE: the former `CorrectionAmendmentOrder` remedy (`correction-ordered`) was
+// REMOVED to track Round-4 R4-A / Round-5 R5-3. The HTLC-9 asymmetric settlement
+// (`dest-revealed-source-unclaimed`) no longer resolves through a DACS-X
+// `correction` amendment; it resolves at the SETTLEMENT layer via the
+// non-terminal §10.3.1 ST-8 `settle-asymmetric` state (→ terminal `completed`
+// on htlc-claim, → terminal `failed-counterparty` on window expiry). A dispute
+// over the window-expired terminal outcome therefore uses a standard remedy
+// (refund / reputation-correction / no-fault), not a settlement correction.
 
-export type RemedyDecision = RefundOrder | ReputationCorrection | NoFault | CorrectionAmendmentOrder;
+export type RemedyDecision = RefundOrder | ReputationCorrection | NoFault;
 
 /** Arbitrator-signed outcome — supersedes/annotates the disputed bundle (§10.10). */
 export interface DisputeOutcome {

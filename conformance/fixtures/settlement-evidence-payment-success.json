@@ -10,14 +10,15 @@
     ],
     "attestationRef": {
       "kind": "dacs-4-evidence",
-      "id": "dacs4:payment:DACS-VERIFY-SETTLE-0001:polygon-amoy-usdc",
-      "contentHash": "b2cb07015441eb4f378361deb8f632dbd325b34fb314a236c136192e3bec2cee"
+      "id": "dacs4:payment:DACS-VERIFY-SETTLE-0001:polygon-amoy-usdc:0",
+      "contentHash": "665d4604f4002a3a1f98ca4e719ecbd0deca9b67b827364cf89602f30de52ca2"
     }
   },
   "evidence": {
     "evidenceVersion": "1",
     "jobId": "DACS-VERIFY-SETTLE-0001",
     "phase": "pay-evm-erc20",
+    "phaseIndex": 0,
     "outcome": "success",
     "paymentTxRefs": [
       {
@@ -39,7 +40,7 @@
     "signature": {
       "algorithm": "ed25519",
       "signer": "did:demos:orchestrator",
-      "value": "JByFn40_uwsumvVHr1ZuCFhMAO7K7iGwqCGtLmhQSp2FMINyqXmK3ycA2a8oZA22h9BHwX72s0xY8QEwI5D8CQ"
+      "value": "OxCi74mRsmCyy3gcJHMklxMo2mDG1eGALoSfHyj5j2pW9WuqxaD97Lv-Lcfht56LNYQg7pChsrA836FyxblEDA"
     }
   },
   "paymentInput": {
@@ -103,7 +104,7 @@
       "route": "dacs-verify-reference"
     }
   },
-  "evidenceHash": "b2cb07015441eb4f378361deb8f632dbd325b34fb314a236c136192e3bec2cee",
+  "evidenceHash": "665d4604f4002a3a1f98ca4e719ecbd0deca9b67b827364cf89602f30de52ca2",
   "publicKeys": {
     "did:demos:orchestrator": "maekceCtXQ62avDhCrkykrlD64Bd6XkRY320vgwHLkI"
   },

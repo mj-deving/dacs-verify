@@ -7,6 +7,7 @@ import {
   consumeBundles,
   deriveReputation,
   isLegalTransition,
+  ratingAddress,
   stateToOutcome,
   twoSidedLookup,
   verifyBundle,
@@ -38,6 +39,10 @@ test("bundleAddress is deterministic and role-specific", () => {
   expect(bundleAddress("job-1", "buyer")).not.toBe(bundleAddress("job-1", "seller"));
 });
 
+test("ratingAddress CF-4-encodes the rater claim segment", () => {
+  expect(ratingAddress("job-1", "cci-xm:evm:mainnet:0x1234")).toBe("dacs5:rating:job-1:cci-xm%3Aevm%3Amainnet%3A0x1234");
+});
+
 test("twoSidedLookup returns both, one, or no expected-side bundles", () => {
   expect(Object.keys(twoSidedLookup(VERIFY_DIVERGENT_JOB_ID, fixtures.fetchDivergent)).sort()).toEqual(["buyer", "seller"]);
   expect(twoSidedLookup(VERIFY_ONE_SIDED_JOB_ID, fixtures.fetchOneSided)).toEqual({ buyer: fixtures.oneSidedBuyer });
@@ -50,6 +55,25 @@ test("consumeBundles classifies canonically equal bundles as unified", () => {
   expect(result.buyer?.decision).toBe("pass");
   expect(result.seller?.decision).toBe("pass");
   expect(bundleHash(result.buyer!.bundle)).toBe(bundleHash(result.seller!.bundle));
+});
+
+test("R5-1 §10.4.1: bundleHash excludes anchoredByRole — two copies differing ONLY in role are canonically equal and both verify", () => {
+  const buyerCopy = fixtures.divergentBuyer; // anchoredByRole: "buyer"
+  const sellerCopy = { ...buyerCopy, anchoredByRole: "seller" as const };
+  // Excluded from the hashed canonical form → identical hash despite the differing per-copy field.
+  expect(bundleHash(sellerCopy)).toBe(bundleHash(buyerCopy));
+  // And the buyer copy's signatures (over the anchoredByRole-excluded scope) verify on the seller-anchored copy unchanged.
+  expect(verifyBundle(sellerCopy, fixtures.resolveKey)).toBe("pass");
+});
+
+test("R5-1 §10.4.2: twoSidedLookup rejects a copy whose anchoredByRole mismatches the address it was fetched from", () => {
+  const buyerCopy = fixtures.divergentBuyer; // anchoredByRole: "buyer"
+  // Forgery property: since anchoredByRole is no longer hashed, this mis-roled copy STILL passes bundleHash + verifyBundle.
+  // The §10.4.2 address cross-check is the ONLY thing standing between it and acceptance at the seller address.
+  expect(verifyBundle(buyerCopy, fixtures.resolveKey)).toBe("pass");
+  // Place the buyer-roled copy at the SELLER address — the cross-check must drop it (not consume it), so the seller side is absent.
+  const misRoledFetch = makeBundleFetch(VERIFY_DIVERGENT_JOB_ID, undefined, buyerCopy);
+  expect(twoSidedLookup(VERIFY_DIVERGENT_JOB_ID, misRoledFetch)).toEqual({});
 });
 
 test("consumeBundles classifies one-sided bundles by §10.11 roles", () => {
@@ -121,6 +145,8 @@ test("ST-8: settle-asymmetric is a legal non-terminal cross-chain open state", (
   expect(isLegalTransition("settle-pending", "settle-asymmetric")).toBe(true);
   expect(isLegalTransition("settle-asymmetric", "settle-completed")).toBe(true);
   expect(isLegalTransition("settle-asymmetric", "settle-failed")).toBe(true);
+  expect(isLegalTransition("settle-asymmetric", "substrate-failure-paused")).toBe(true);
+  expect(isLegalTransition("substrate-failure-paused", "settle-asymmetric")).toBe(true);
   expect(isLegalTransition("settle-asymmetric", "finalised")).toBe(false); // must resolve via settle-completed first
   expect(TERMINAL_STATES.has("settle-asymmetric")).toBe(false);
 });
@@ -139,6 +165,10 @@ test("deriveReputation excludes failed-substrate from party fault denominator", 
   expect(derivation.metrics.averageSellerRating).toBeNull();
   expect(derivation.metrics.observedTransactionalVolume).toEqual([]);
   expect(derivation.bundleRefs).toHaveLength(5);
+  expect(derivation.windowingBasis).toBe("finalisedAt");
+  expect(derivation.bundleRefs.map((ref) => ref.contentHash)).toEqual(
+    [...derivation.bundleRefs.map((ref) => ref.contentHash)].sort(),
+  );
 });
 
 test("deriveReputation returns null metrics, not zero, when denominator is zero", () => {
@@ -222,6 +252,70 @@ test("deriveReputation perspective_flip: the withdrawer takes the abort hit (§1
   expect(withdrawerFlip.metrics.counterpartyDisputeRate).toBe(0);
 });
 
+test("deriveReputation drops a single-signed non-abort counterparty copy before perspective_flip", () => {
+  // §10.5.1 guard (i): a lone seller-anchored failed-counterparty copy is NOT a valid reputation input for the buyer.
+  const completed = reps.find((b) => b.outcome === "completed")!;
+  const singleSignedCounterparty = {
+    ...fixtures.divergentSeller,
+    finalisedAt: VERIFY_REPUTATION_WINDOW_START + 9_000,
+    signatures: fixtures.divergentSeller.signatures.filter((signature) => signature.party === VERIFY_SELLER_CLAIM),
+  };
+  expect(verifyBundle(singleSignedCounterparty, fixtures.resolveKey)).toBe("fail");
+  const scored = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    () => "buyer",
+    [completed, singleSignedCounterparty],
+    VERIFY_REPUTATION_WINDOW_START,
+    VERIFY_REPUTATION_WINDOW_END,
+    VERIFY_REPUTATION_COMPUTED_AT,
+  );
+  expect(scored.bundleCount).toBe(1);
+  expect(scored.metrics.completionRate).toBe(1);
+  expect(scored.metrics.counterpartyDisputeRate).toBe(0);
+  expect(scored.bundleRefs.map((ref) => ref.id)).toEqual([completed.jobId]);
+});
+
+test("deriveReputation excludes canonically divergent self/counterparty copies from both numerator and denominator", () => {
+  // §10.5.1 guard (ii): contradictory completed vs failed-counterparty copies are a §10.4.3(d) dispute → excluded.
+  const completed = reps.find((b) => b.outcome === "completed")!;
+  const divergentBuyer = { ...fixtures.divergentBuyer, finalisedAt: VERIFY_REPUTATION_WINDOW_START + 9_000 };
+  const divergentSeller = { ...fixtures.divergentSeller, finalisedAt: VERIFY_REPUTATION_WINDOW_START + 9_000 };
+  const scored = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    () => "buyer",
+    [completed, divergentBuyer, divergentSeller],
+    VERIFY_REPUTATION_WINDOW_START,
+    VERIFY_REPUTATION_WINDOW_END,
+    VERIFY_REPUTATION_COMPUTED_AT,
+  );
+  expect(scored.bundleCount).toBe(1);
+  expect(scored.metrics.completionRate).toBe(1);
+  expect(scored.metrics.counterpartyDisputeRate).toBe(0);
+  expect(scored.bundleRefs.map((ref) => ref.id)).toEqual([completed.jobId]);
+});
+
+test("deriveReputation ignores orchestrator-anchored copies when selecting a counterparty perspective", () => {
+  // §10.5.1 guard (iii): the buyer copy drives the seller's score; an orchestrator copy is evidence-only noise.
+  const orchestratorNoise = {
+    ...fixtures.divergentBuyer,
+    jobId: fixtures.reconcileVictimBuyer.jobId,
+    finalisedAt: fixtures.reconcileVictimBuyer.finalisedAt,
+    anchoredByRole: "orchestrator" as const,
+  };
+  const scored = deriveReputation(
+    VERIFY_SELLER_CLAIM,
+    () => "seller",
+    [orchestratorNoise, fixtures.reconcileVictimBuyer],
+    VERIFY_REPUTATION_WINDOW_START,
+    VERIFY_REPUTATION_WINDOW_END,
+    VERIFY_REPUTATION_COMPUTED_AT,
+  );
+  expect(scored.bundleCount).toBe(1);
+  expect(scored.metrics.completionRate).toBe(0);
+  expect(scored.metrics.counterpartyDisputeRate).toBe(0);
+  expect(scored.bundleRefs.map((ref) => ref.id)).toEqual([fixtures.reconcileVictimBuyer.jobId]);
+});
+
 test("deriveReputation R4-B: a party scored over only counterparty-anchored bundles IS scored via perspective_flip", () => {
   // The pre-R4-B model scoped by anchoredBy==party and would have returned bundleCount 0 here (the defect). The
   // corrected model scores the seller over the buyer-anchored set via perspective_flip.
@@ -278,6 +372,23 @@ test("deriveReputation role binding is PER-JOB — a party that is buyer in one 
   expect(mixed.bundleCount).toBe(2);
   expect(mixed.metrics.counterpartyDisputeRate).toBe(0); // both self-aborts read literally; pre-fix scalar role → 0.5
   expect(mixed.metrics.completionRate).toBe(0);
+});
+
+test("deriveReputation determinism receipt is reproducible from sorted bundleRefs", () => {
+  const derivation = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  const byHash = new Map(reps.map((bundle) => [bundleHash(bundle), bundle]));
+  const rerun = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    () => "buyer",
+    derivation.bundleRefs.map((ref) => byHash.get(ref.contentHash)!),
+    derivation.windowStart,
+    derivation.windowEnd,
+    derivation.computedAt,
+  );
+  expect(derivation.windowingBasis).toBe("finalisedAt");
+  expect(rerun.metrics).toEqual(derivation.metrics);
+  expect(rerun.bundleCount).toBe(derivation.bundleCount);
+  expect(rerun.bundleRefs).toEqual(derivation.bundleRefs);
 });
 
 test("verifyBundle rejects a bundle missing the required anchoredByRole field", () => {

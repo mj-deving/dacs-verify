@@ -155,15 +155,8 @@ test("ISC-35: dispute pinned to an unknown bundle → FAIL", () => {
   expect(verifyDisputeFlow(input).decision).toBe("fail");
 });
 
-test("ISC-44: HTLC-9 asymmetric-settlement dispute closes via correction amendment (flow PASS, reputation voided)", () => {
-  const input = baseInput();
-  input.outcome = makeOutcome(input.record, arbitrator, {
-    kind: "correction-ordered",
-    correctedOutcome: "failure",
-    reason: "dest-revealed-source-unclaimed",
-    revealTxRef: "polygon-amoy:0xreveal",
-  });
-  const res = verifyDisputeFlow(input);
-  expect(res.decision).toBe("pass");
-  expect(res.reweighted?.effectiveWeight).toBe(0);
-});
+// NOTE: ISC-44 (HTLC-9 dispute closes via `correction` amendment) was REMOVED —
+// the `correction-ordered` remedy was removed to track Round-4 R4-A / Round-5
+// R5-3. An HTLC-9 asymmetric settlement resolves at the §10.3.1 ST-8 settlement
+// layer (→ `completed` on htlc-claim, → terminal `failed-counterparty` on window
+// expiry); a dispute over the terminal outcome uses a standard remedy.

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { test, expect } from "bun:test";
 
 import { DOMAIN_SEPARATOR_REGISTRY } from "../src/signing.ts";
-import { bundleHash, verifyBundle, type AttestationBundle, type BundleSignature } from "../src/dacs5/index.ts";
+import { bundleHash, BUNDLE_SIGNED_SCOPE_OMIT, verifyBundle, type AttestationBundle, type BundleSignature } from "../src/dacs5/index.ts";
 import { keypairFromSeed, signArtifact, type Keypair } from "../examples/issuer-kit.ts";
 import {
   ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF,
@@ -39,7 +39,7 @@ function signBundle(base: Omit<AttestationBundle, "signatures">, signers: [strin
   const signatures: BundleSignature[] = signers.map(([party, kp]) => ({
     party,
     algorithm: "ed25519",
-    value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, kp.privateKey, ["signatures"]),
+    value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, kp.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
   }));
   return { ...base, signatures };
 }
@@ -93,10 +93,15 @@ test("malformed resolved key returns error", () => {
 
 test("tampered signature returns fail", () => {
   const first = fixture.signatures[0]!;
+  // Tamper the FIRST base64url char, not the last: a 64-byte ed25519 signature encodes to 86 base64url chars whose
+  // final char carries only the 2 trailing bits — flipping it can decode to byte-identical material (e.g. "A"↔"B"),
+  // so a last-char flip is not a real tamper. The first char carries 6 significant bits of byte 0, so flipping it
+  // always changes the decoded signature.
+  const flippedFirst = (first.value[0] === "A" ? "B" : "A") + first.value.slice(1);
   const tampered: AttestationBundle = {
     ...fixture,
     signatures: [
-      { ...first, value: first.value.slice(0, -1) + (first.value.endsWith("A") ? "B" : "A") },
+      { ...first, value: flippedFirst },
       ...fixture.signatures.slice(1),
     ],
   };

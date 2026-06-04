@@ -1,6 +1,7 @@
 export * from "./canonicalize.ts";
 export * from "./hash.ts";
 export * from "./decimal.ts";
+export * from "./logical-address.ts";
 export * from "./signing.ts";
 export * from "./dacs1.ts";
 export * from "./report.ts";

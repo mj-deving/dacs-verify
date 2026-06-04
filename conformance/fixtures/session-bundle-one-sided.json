@@ -34,7 +34,7 @@
       "attestationRef": {
         "kind": "dacs-4-evidence",
         "id": "evidence-DACS-VERIFY-L3-ONE-SIDED",
-        "contentHash": "46bf69e38daee58d64e15027bfe68f9e2be727b4bdc904e0f485a7bb5bd35097"
+        "contentHash": "4c3d1a68059b3a4f12e313b194c106b619a40307f93cd62e2a47c85b9a17213d"
       }
     }
   ],
@@ -43,7 +43,7 @@
     {
       "kind": "dacs-4-evidence",
       "id": "evidence-DACS-VERIFY-L3-ONE-SIDED",
-      "contentHash": "46bf69e38daee58d64e15027bfe68f9e2be727b4bdc904e0f485a7bb5bd35097"
+      "contentHash": "4c3d1a68059b3a4f12e313b194c106b619a40307f93cd62e2a47c85b9a17213d"
     }
   ],
   "recipeRegistryVersion": 1,
@@ -53,7 +53,7 @@
     {
       "party": "did:demos:buyer",
       "algorithm": "ed25519",
-      "value": "pFYNHMjQ777OPXYsVKAjagTGL325NaEdRdlFqwgFHgKa_Ns9RXrKbO7ijRDOAZFpK7fAtY9vUKYKvD5M8Yn4Ag"
+      "value": "QbT5D15tTzL4n5yqzRZ35CEqxcOwDvDJfwZguBMRmD3wK4evM_OXE0rjU-6-d7zkpEC6SSkvSDA9y6Q_XVV6DQ"
     }
   ]
 }

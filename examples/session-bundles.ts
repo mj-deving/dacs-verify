@@ -4,6 +4,7 @@ import { DOMAIN_SEPARATOR_REGISTRY } from "../src/signing.ts";
 import {
   bundleAddress,
   bundleHash,
+  BUNDLE_SIGNED_SCOPE_OMIT,
   verifyBundle,
   type AnchoredByRole,
   type AttestationBundle,
@@ -49,10 +50,13 @@ function publicKeys(buyer: Keypair, seller: Keypair): Record<string, string> {
 function signBundle(unsigned: Omit<AttestationBundle, "signatures">, signers: [string, Keypair][]): AttestationBundle {
   const signingDoc = { ...unsigned, signatures: [] };
   const separator = DOMAIN_SEPARATOR_REGISTRY["dacs-5-bundle"];
+  // §10.4.1 (R5-1): the signed scope omits `signatures` AND `anchoredByRole` (see src/dacs5/bundle.ts bundleHash) so the
+  // signature is computed over the same canonical form the verifier recomputes; integrity of the unhashed anchoredByRole
+  // is the §10.4.2 address cross-check, not the signature.
   const signatures: BundleSignature[] = signers.map(([party, kp]) => ({
     party,
     algorithm: "ed25519",
-    value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, kp.privateKey, ["signatures"]),
+    value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, kp.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
   }));
   return { ...unsigned, signatures };
 }
@@ -101,6 +105,7 @@ function makeBundle(input: {
   const evidenceRef = ref("dacs-4-evidence", `evidence-${input.jobId}`, {
     evidenceVersion: "1",
     jobId: input.jobId,
+    phaseIndex: 0,
     outcome: input.phase.outcome,
     checkedAt: input.finalisedAt - 1_000,
   });
@@ -322,7 +327,11 @@ export function buildSessionBundleFixtures(): {
     seeds: { buyer: BUYER_SEED, seller: SELLER_SEED },
     resolveKey,
     fetchDivergent: makeBundleFetch(VERIFY_DIVERGENT_JOB_ID, divergentBuyer, divergentSeller),
-    fetchUnified: makeBundleFetch(VERIFY_DIVERGENT_JOB_ID, divergentBuyer, divergentBuyer),
+    // §10.4.2/§10.4.3(c) (R5-1): the unified happy path is TWO canonically-EQUAL copies that differ ONLY in the unhashed
+    // `anchoredByRole` — the buyer anchors its copy at the buyer address, the seller anchors its (same-hash, same-signatures)
+    // copy at the seller address. The signed scope excludes anchoredByRole, so the buyer copy's signatures verify on the
+    // seller-anchored copy unchanged; each side carries its own role so the §10.4.2 address cross-check accepts both.
+    fetchUnified: makeBundleFetch(VERIFY_DIVERGENT_JOB_ID, divergentBuyer, { ...divergentBuyer, anchoredByRole: "seller" }),
     fetchOneSided: makeBundleFetch(VERIFY_ONE_SIDED_JOB_ID, oneSidedBuyer),
     fetchAbsent: makeBundleFetch("DACS-VERIFY-L3-ABSENT"),
     // the seller-signed bundle placed at the BUYER address (buyer slot) — role-signature binding must reject it.

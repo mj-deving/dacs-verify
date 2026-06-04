@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   classifyVetOutcome,
+  evaluateVetRequirement,
   mayRetry,
   validateMethodContract,
   vetAttestationAddress,
+  vetCompositeAddress,
   vetMatch,
   type VerifyResult,
   type VerifyResultResolver,
@@ -36,6 +38,10 @@ describe("DACS-2 Vet — method common contract (CM-1..5)", () => {
   });
   test("CM-2 anchors at dacs2:{jobId}:{scheme}:{identifier}:v{recipeVersion}, scheme lowercased", () => {
     expect(vetAttestationAddress("job-abc", "LEI", "984500ABCDEF12345678", 3)).toBe("dacs2:job-abc:lei:984500ABCDEF12345678:v3");
+    expect(vetAttestationAddress("job-abc", "CCI-XM", "evm:mainnet:0x1234", 3)).toBe("dacs2:job-abc:cci-xm:evm%3Amainnet%3A0x1234:v3");
+  });
+  test("CF-4 encodes the dacs2 composite evaluatedParty segment", () => {
+    expect(vetCompositeAddress("job-abc", "cci-xm:evm:mainnet:0x1234")).toBe("dacs2:composite:job-abc:cci-xm%3Aevm%3Amainnet%3A0x1234");
   });
 });
 
@@ -63,8 +69,16 @@ describe("DACS-2 Vet — matching algorithm (MA-1..MA-3) with full resolution", 
   const resolve: VerifyResultResolver = (v) =>
     v.anchor.locator === "stor-fail" ? { decision: "fail", method: "vc-presentation" }
       : v.anchor.locator === "stor-indet" ? { decision: "indeterminate", method: "vc-presentation" }
+        : v.anchor.locator === "stor-error" ? { decision: "error", method: "vc-presentation", errorClass: "transient" }
+          : v.anchor.locator === "stor-counterparty-malformed" ? { decision: "error", method: "vc-presentation", errorClass: "counterparty" }
         : { decision: "pass", method: "vc-presentation" };
-  const mk = (claims: BundleClaim[], presentedBy?: string): IdentityBundle => ({ bundleVersion: "1", presentedBy: presentedBy ?? claims[0]!.ref, presentedAt: NOW, claims, presentation: { kind: "siwd" } });
+  const mk = (claims: BundleClaim[], presentedBy?: string): IdentityBundle => ({
+    bundleVersion: "1",
+    presentedBy: presentedBy ?? claims[0]!.ref,
+    presentedAt: NOW,
+    claims: claims.map((c) => (c.issuedAt === undefined && c.expiresAt === undefined ? { ...c, issuedAt: NOW - 1_000 } : c)),
+    presentation: { kind: "siwd" },
+  });
   const reqLei: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }] };
   const reqPrimary: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }], primaryClaimSelector: "lei" };
 
@@ -85,6 +99,85 @@ describe("DACS-2 Vet — matching algorithm (MA-1..MA-3) with full resolution", 
   });
   test("find_claim: verificationRequired + resolved indeterminate → claim absent", () => {
     expect(vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-indet") }]), reqLei, resolve, NOW).ok).toBe(false);
+  });
+  test("vetFindClaim freshness fails closed before maxAge", () => {
+    const maxAgeReq: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true, maxAge: 60 }] };
+    const unknownAge: IdentityBundle = { bundleVersion: "1", presentedBy: "lei:984500ABCDEF12345678", presentedAt: NOW, claims: [{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-pass") }], presentation: { kind: "siwd" } };
+    expect(vetMatch(unknownAge, reqLei, resolve, NOW).ok).toBe(false);
+
+    const expired: IdentityBundle = { ...unknownAge, claims: [{ ref: "lei:984500ABCDEF12345678", issuedAt: NOW - 1_000, expiresAt: NOW - 1, verifiedBy: vb("stor-pass") }] };
+    expect(vetMatch(expired, reqLei, resolve, NOW).ok).toBe(false);
+
+    const noIssuedAt: IdentityBundle = { ...unknownAge, claims: [{ ref: "lei:984500ABCDEF12345678", expiresAt: NOW + 1_000, verifiedBy: vb("stor-pass") }] };
+    expect(vetMatch(noIssuedAt, reqLei, resolve, NOW).ok).toBe(true);
+    expect(vetMatch(noIssuedAt, maxAgeReq, resolve, NOW).ok).toBe(false);
+  });
+  test("MA-3 rejects stale presentedBy even when another same-scheme claim satisfies required", () => {
+    const b: IdentityBundle = {
+      bundleVersion: "1",
+      presentedBy: "lei:STALE",
+      presentedAt: NOW,
+      claims: [
+        { ref: "lei:STALE", issuedAt: NOW - 10_000, expiresAt: NOW - 1, verifiedBy: vb("stor-pass") },
+        { ref: "lei:FRESH", issuedAt: NOW - 1_000, expiresAt: NOW + 60_000, verifiedBy: vb("stor-pass") },
+      ],
+      presentation: { kind: "siwd" },
+    };
+    const req: BundleRequirement = {
+      requirementVersion: "1",
+      required: [{ scheme: "lei", verificationRequired: true, maxAge: 60 }],
+      primaryClaimSelector: "lei",
+    };
+
+    expect(vetMatch(b, req, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 presentedBy claim stale (primary freshness guard)" });
+  });
+  test("oneOf aggregation precedence is error > indeterminate > fail within the group", () => {
+    const req: BundleRequirement = {
+      requirementVersion: "1",
+      required: [],
+      oneOf: [[
+        { scheme: "lei", verificationRequired: true },
+        { scheme: "domain", verificationRequired: true },
+      ]],
+    };
+    const b = mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-error") },
+    ]);
+    expect(evaluateVetRequirement(b, req, resolve, NOW)).toEqual({ decision: "error", errorClass: "transient" });
+
+    const indeterminate = mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-indet") },
+    ]);
+    expect(evaluateVetRequirement(indeterminate, req, resolve, NOW)).toEqual({ decision: "indeterminate" });
+  });
+  test("cross-accumulator precedence is fail > error > indeterminate", () => {
+    const req: BundleRequirement = {
+      requirementVersion: "1",
+      required: [{ scheme: "lei", verificationRequired: true }],
+      oneOf: [[{ scheme: "domain", verificationRequired: true }]],
+    };
+    const b = mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-error") },
+    ]);
+    expect(evaluateVetRequirement(b, req, resolve, NOW)).toEqual({ decision: "fail", errorClass: "permanent" });
+  });
+  test("counterparty-malformed oneOf error keeps decision error but attributes counterparty", () => {
+    const req: BundleRequirement = {
+      requirementVersion: "1",
+      required: [],
+      oneOf: [[
+        { scheme: "lei", verificationRequired: true },
+        { scheme: "domain", verificationRequired: true },
+      ]],
+    };
+    const b = mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-counterparty-malformed") },
+    ]);
+    expect(evaluateVetRequirement(b, req, resolve, NOW)).toEqual({ decision: "error", errorClass: "counterparty" });
   });
 });
 

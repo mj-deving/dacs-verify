@@ -21,13 +21,14 @@
  * vectors/golden.json (the pinned outputs), point their own DACS verifier at the
  * same inputs, and diff. See README.md for the spec §-map.
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { canonicalize, withoutSignature } from "../src/canonicalize.ts";
 import { sha256Hex, contentHash } from "../src/hash.ts";
 import { canonicalDecimal, assertPositiveAmount } from "../src/decimal.ts";
+import { cf4Decode, cf4Encode } from "../src/logical-address.ts";
 import {
   DOMAIN_SEPARATOR_REGISTRY,
   verifyArtifactSignature,
@@ -35,6 +36,8 @@ import {
 } from "../src/signing.ts";
 import {
   matchRequirement,
+  deriveIdentityTier,
+  isVerifyResultRef,
   listingLogicalAddress,
   nativeAddressPerSpec,
   validateListingStructure,
@@ -42,12 +45,15 @@ import {
   type BundleClaim,
   type BundleRequirement,
   type ClaimReference,
+  type IdentityTier,
 } from "../src/dacs1.ts";
 import {
   classifyVetOutcome,
+  evaluateVetRequirement,
   mayRetry,
   validateMethodContract,
   vetAttestationAddress,
+  vetCompositeAddress,
   vetMatch,
   VET_DECISIONS,
   type VerifyResult,
@@ -91,15 +97,18 @@ import {
   consumeBundles,
   deriveReputation,
   isLegalTransition,
+  ratingAddress,
   stateToOutcome,
   twoSidedLookup,
   verifyBundle,
 } from "../src/dacs5/index.ts";
 import {
   evidenceHash,
+  paymentEvidenceAddress,
   verifySettlementEvidence,
   type PaymentPhaseInput,
   type PhaseHandlerResult,
+  type RailDefinition,
   type SettlementEvidence,
 } from "../src/dacs4/index.ts";
 import { keypairFromSeed, signArtifact, type Keypair } from "../examples/issuer-kit.ts";
@@ -240,13 +249,22 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
 // ── §6.3 — DACS-1 identity-bundle validation ────────────────────────────────
 {
   const NOW = 1_900_000_000_000;
+  const verifiedByFor = (ref: string, locator = `stor-verify-${ref.replaceAll(":", "-")}`): NonNullable<BundleClaim["verifiedBy"]> => ({
+    anchor: { kind: "storage-program", locator },
+    contentHash: sha256Hex(`verify-result:${ref}:${locator}:pass`),
+    recipeVersion: 1,
+  });
+  const resolvedPass = (claim: BundleClaim): boolean =>
+    isVerifyResultRef(claim.verifiedBy)
+    && claim.verifiedBy.contentHash === sha256Hex(`verify-result:${claim.ref}:${claim.verifiedBy.anchor.locator}:pass`);
   const mkBundle = (claims: { ref: string; verified?: boolean }[], presentedBy?: string): IdentityBundle => ({
     bundleVersion: "1",
     presentedBy: presentedBy ?? claims[0]!.ref,
     presentedAt: NOW,
     claims: claims.map((c) => ({
       ref: c.ref,
-      ...(c.verified ? { verifiedBy: { anchor: { kind: "storage-program", locator: "stor-x" }, contentHash: "h", recipeVersion: 1 } } : {}),
+      issuedAt: NOW - 1_000,
+      ...(c.verified ? { verifiedBy: verifiedByFor(c.ref) } : {}),
     })),
     presentation: { kind: "siwd" },
   });
@@ -267,6 +285,104 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("dacs1-tier-laundering-guard", "dacs1", "§6.3.3", "step 3b: an unverified presentedBy claim is rejected even if another verified claim satisfies the requirement",
     matchRequirement(launderBundle, reqPrimary, NOW).ok, false);
 
+  const freshVerifiedBy = { anchor: { kind: "storage-program", locator: "stor-fresh" }, contentHash: "h", recipeVersion: 1 };
+  const freshnessReq: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }] };
+  const freshnessMaxAgeReq: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true, maxAge: 60 }] };
+  rec("dacs1-freshness-fail-closed", "dacs1", "§6.3.2/§6.3.3", "freshness Option A: absent timestamps and expired expiresAt fail before maxAge; expiresAt-only can pass unless maxAge needs issuedAt",
+    {
+      absentBoth: matchRequirement({ bundleVersion: "1", presentedBy: "lei:529900T8BM49AURSDO55", presentedAt: NOW, claims: [{ ref: "lei:529900T8BM49AURSDO55", verifiedBy: freshVerifiedBy }], presentation: { kind: "siwd" } }, freshnessReq, NOW).ok,
+      expired: matchRequirement({ bundleVersion: "1", presentedBy: "lei:529900T8BM49AURSDO55", presentedAt: NOW, claims: [{ ref: "lei:529900T8BM49AURSDO55", issuedAt: NOW - 1_000, expiresAt: NOW - 1, verifiedBy: freshVerifiedBy }], presentation: { kind: "siwd" } }, freshnessReq, NOW).ok,
+      expiresOnly: matchRequirement({ bundleVersion: "1", presentedBy: "lei:529900T8BM49AURSDO55", presentedAt: NOW, claims: [{ ref: "lei:529900T8BM49AURSDO55", expiresAt: NOW + 1_000, verifiedBy: freshVerifiedBy }], presentation: { kind: "siwd" } }, freshnessReq, NOW).ok,
+      expiresOnlyMaxAge: matchRequirement({ bundleVersion: "1", presentedBy: "lei:529900T8BM49AURSDO55", presentedAt: NOW, claims: [{ ref: "lei:529900T8BM49AURSDO55", expiresAt: NOW + 1_000, verifiedBy: freshVerifiedBy }], presentation: { kind: "siwd" } }, freshnessMaxAgeReq, NOW).ok,
+      stalePresentedByPrimary: matchRequirement({ bundleVersion: "1", presentedBy: "lei:STALE", presentedAt: NOW, claims: [{ ref: "lei:STALE", issuedAt: NOW - 10_000, expiresAt: NOW - 1, verifiedBy: freshVerifiedBy }, { ref: "lei:FRESH", issuedAt: NOW - 1_000, expiresAt: NOW + 60_000, verifiedBy: freshVerifiedBy }], presentation: { kind: "siwd" } }, { ...freshnessMaxAgeReq, primaryClaimSelector: "lei" }, NOW).ok,
+    },
+    { absentBoth: false, expired: false, expiresOnly: true, expiresOnlyMaxAge: false, stalePresentedByPrimary: false });
+
+  type IdentityTierCase = {
+    kind: "IdentityTierCase";
+    identityBundle: IdentityBundle;
+    expectedIdentityTier: IdentityTier;
+    note?: string;
+    specRefs?: string[];
+  };
+  const identityTierFixture = (name: string): IdentityTierCase =>
+    JSON.parse(readFileSync(join(HERE, "fixtures", "identity", name), "utf8")) as IdentityTierCase;
+  const identityTierCases: { id: string; description: string; fixture?: string; bundle: IdentityBundle; expected: IdentityTier }[] = [
+    {
+      id: "identity-tier-institutional",
+      description: "IT-1: verified-and-fresh authority-issued claim derives institutional",
+      fixture: "conformance/fixtures/identity/identity-tier-institutional.json",
+      bundle: identityTierFixture("identity-tier-institutional.json").identityBundle,
+      expected: "institutional",
+    },
+    {
+      id: "identity-tier-verified",
+      description: "IT-1: verified-and-fresh non-authority claim derives verified",
+      fixture: "conformance/fixtures/identity/identity-tier-verified.json",
+      bundle: identityTierFixture("identity-tier-verified.json").identityBundle,
+      expected: "verified",
+    },
+    {
+      id: "identity-tier-raw-key",
+      description: "IT-1: raw key with no verifiedBy derives self-declared",
+      bundle: mkBundle([{ ref: "key:1234abcd" }]),
+      expected: "self-declared",
+    },
+    {
+      id: "identity-tier-self-asserted-ignored",
+      description: "IT-2: self-asserted identityTier is ignored and recomputed",
+      fixture: "conformance/fixtures/identity/identity-tier-self-declared.json",
+      bundle: identityTierFixture("identity-tier-self-declared.json").identityBundle,
+      expected: "self-declared",
+    },
+    {
+      id: "identity-tier-highest-wins",
+      description: "IT-3: verified institutional claim wins over verified non-authority claim",
+      bundle: {
+        bundleVersion: "1",
+        presentedBy: "lei:529900T8BM49AURSDO55",
+        presentedAt: NOW,
+        claims: [
+          { ref: "domain:example.com", issuedAt: NOW - 1_000, verifiedBy: verifiedByFor("domain:example.com") },
+          { ref: "lei:529900T8BM49AURSDO55", issuedAt: NOW - 1_000, verifiedBy: verifiedByFor("lei:529900T8BM49AURSDO55") },
+        ],
+        presentation: { kind: "per-claim" },
+      },
+      expected: "institutional",
+    },
+    {
+      id: "identity-tier-stale-not-elevated",
+      description: "IT-3: stale verifiedBy does not elevate an authority-issued claim",
+      bundle: {
+        bundleVersion: "1",
+        presentedBy: "lei:529900T8BM49AURSDO55",
+        presentedAt: NOW,
+        claims: [
+          { ref: "lei:529900T8BM49AURSDO55", issuedAt: NOW - 10_000, expiresAt: NOW - 1, verifiedBy: verifiedByFor("lei:529900T8BM49AURSDO55") },
+        ],
+        presentation: { kind: "per-claim" },
+      },
+      expected: "self-declared",
+    },
+    {
+      id: "identity-tier-forged-unresolved",
+      description: "IT-3: malformed or unresolved verifiedBy does not elevate an authority-issued claim",
+      bundle: {
+        bundleVersion: "1",
+        presentedBy: "lei:529900T8BM49AURSDO55",
+        presentedAt: NOW,
+        claims: [
+          { ref: "lei:529900T8BM49AURSDO55", issuedAt: NOW - 1_000, verifiedBy: { kind: "storage-program", locator: "stor-forged", contentHash: sha256Hex("forged") } as never },
+        ],
+        presentation: { kind: "per-claim" },
+      },
+      expected: "self-declared",
+    },
+  ];
+  for (const tc of identityTierCases) {
+    rec(tc.id, "dacs1", "§6.3.2.1", tc.description, deriveIdentityTier(tc.bundle, NOW, resolvedPass), tc.expected);
+  }
+
   const intake = { dacsVersion: "1", listingId: "rfp-intake-1", listingVersion: 1, validity: { notBefore: NOW - 1000 }, pipeline: [{ kind: "negotiate-sealed-envelope" }, { kind: "commit-agreement" }] };
   rec("dacs1-listing-intake-ok", "dacs1", "§6.3.4", "an intake-only listing (no pay phase) may omit acceptedRails",
     validateListingStructure(intake, NOW).ok, true);
@@ -285,7 +401,25 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const native = nativeAddressPerSpec(logical);
   rec("dacs1-native-address", "dacs1", "§6.3.4", "OBSERVATION DACS-VERIFY-0003: spec rule yields stor-<64hex> (Demos uses stor-<40hex>; verify on substrate before relying)",
     { shape64: /^stor-[0-9a-f]{64}$/.test(native), notLen40: native.length !== "stor-".length + 40 }, { shape64: true, notLen40: true });
-  golden["addressing"] = { logical, native };
+  const cf4Input = "cci-xm:evm:mainnet:0x1234?x=1&y=100%";
+  const cf4Encoded = cf4Encode(cf4Input);
+  rec("cf4-encode-delimiters", "addressing", "§6.3.4 CF-4", "reserved delimiters (: ? & = %) are percent-encoded with uppercase hex, and no other bytes are guessed",
+    { encoded: cf4Encoded, decoded: cf4Decode(cf4Encoded) },
+    { encoded: "cci-xm%3Aevm%3Amainnet%3A0x1234%3Fx%3D1%26y%3D100%25", decoded: cf4Input });
+  const colonListing = listingLogicalAddress("cci-xm:evm:mainnet:0x1234", "rfq:lot?x=1", 3);
+  rec("cf4-dacs1-listing-address", "addressing", "§6.3.4 CF-4", "listing logical address encodes sellerPrimaryClaim + listingId variable segments before assembly",
+    colonListing, "dacs1:cci-xm%3Aevm%3Amainnet%3A0x1234:rfq%3Alot%3Fx%3D1:v3");
+  golden["identityTier"] = {
+    status: "golden — reference-verifier-accepted + byte-stable",
+    fixtureDir: "conformance/fixtures/identity",
+    cases: identityTierCases.map((tc) => ({
+      id: tc.id,
+      ...(tc.fixture !== undefined ? { fixture: tc.fixture } : {}),
+      derived: deriveIdentityTier(tc.bundle, NOW, resolvedPass),
+      expected: tc.expected,
+    })),
+  };
+  golden["addressing"] = { logical, native, cf4: { input: cf4Input, encoded: cf4Encoded, colonListing } };
 }
 
 // ── §14.2 — DACS-2 Vet: method contract (CM-1..5), retry (VP-R1..4), match (MA-1..3) ──
@@ -312,6 +446,10 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
 
   rec("vet-cm2-address", "vet", "§7.3.1", "CM-2: attestation anchors at dacs2:{jobId}:{scheme}:{identifier}:v{recipeVersion} (scheme lowercased per CF-2)",
     vetAttestationAddress("job-abc", "LEI", "984500ABCDEF12345678", 3), "dacs2:job-abc:lei:984500ABCDEF12345678:v3");
+  rec("cf4-dacs2-attestation-address", "vet", "§6.3.4 CF-4", "dacs2 attestation address encodes a colon-bearing identifier segment",
+    vetAttestationAddress("job-abc", "CCI-XM", "evm:mainnet:0x1234", 3), "dacs2:job-abc:cci-xm:evm%3Amainnet%3A0x1234:v3");
+  rec("cf4-dacs2-composite-address", "vet", "§6.3.4 CF-4", "dacs2 composite address encodes a colon-bearing evaluatedParty segment",
+    vetCompositeAddress("job-abc", "cci-xm:evm:mainnet:0x1234"), "dacs2:composite:job-abc:cci-xm%3Aevm%3Amainnet%3A0x1234");
 
   rec("vet-vpr1-transient-retry", "vet", "§7.6.1", "VP-R1: decision=error + retryClass=transient + attempts<budget → retry",
     mayRetry({ decision: "error", retryClass: "transient", attempts: 1, retryBudget: 3 }), true);
@@ -332,9 +470,15 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const resolveVR: VerifyResultResolver = (v) =>
     v.anchor.locator === "stor-fail" ? { decision: "fail", method: "vc-presentation" }
       : v.anchor.locator === "stor-indet" ? { decision: "indeterminate", method: "vc-presentation" }
+        : v.anchor.locator === "stor-error" ? { decision: "error", method: "vc-presentation", errorClass: "transient" }
+          : v.anchor.locator === "stor-counterparty-malformed" ? { decision: "error", method: "vc-presentation", errorClass: "counterparty" }
         : { decision: "pass", method: "vc-presentation" };
   const mk = (claims: BundleClaim[], presentedBy?: string): IdentityBundle => ({
-    bundleVersion: "1", presentedBy: presentedBy ?? claims[0]!.ref, presentedAt: NOW, claims, presentation: { kind: "siwd" },
+    bundleVersion: "1",
+    presentedBy: presentedBy ?? claims[0]!.ref,
+    presentedAt: NOW,
+    claims: claims.map((c) => (c.issuedAt === undefined && c.expiresAt === undefined ? { ...c, issuedAt: NOW - 1_000 } : c)),
+    presentation: { kind: "siwd" },
   });
   const reqLei: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }] };
   const reqOneOf: BundleRequirement = { requirementVersion: "1", required: [], oneOf: [[{ scheme: "lei", verificationRequired: true }, { scheme: "finra-crd", verificationRequired: true }]] };
@@ -362,7 +506,55 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("vet-findclaim-decision", "vet", "§6.3.3", "find_claim: a verificationRequired claim whose verifiedBy resolves to indeterminate is treated as absent",
     vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-indet") }]), reqLei, resolveVR, NOW).ok, false);
 
-  golden["vet"] = { decisions: VET_DECISIONS, address: vetAttestationAddress("job-abc", "LEI", "984500ABCDEF12345678", 3), retryBudgetDefault: 3 };
+  const vetMaxAgeReq: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true, maxAge: 60 }] };
+  rec("vet-freshness-fail-closed", "vet", "§6.3.2/§6.3.3", "vetFindClaim applies the same freshness pre-gate before maxAge after resolving verifiedBy decision",
+    {
+      absentBoth: vetMatch({ bundleVersion: "1", presentedBy: "lei:984500ABCDEF12345678", presentedAt: NOW, claims: [{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-pass") }], presentation: { kind: "siwd" } }, reqLei, resolveVR, NOW).ok,
+      expired: vetMatch({ bundleVersion: "1", presentedBy: "lei:984500ABCDEF12345678", presentedAt: NOW, claims: [{ ref: "lei:984500ABCDEF12345678", issuedAt: NOW - 1_000, expiresAt: NOW - 1, verifiedBy: vb("stor-pass") }], presentation: { kind: "siwd" } }, reqLei, resolveVR, NOW).ok,
+      expiresOnly: vetMatch({ bundleVersion: "1", presentedBy: "lei:984500ABCDEF12345678", presentedAt: NOW, claims: [{ ref: "lei:984500ABCDEF12345678", expiresAt: NOW + 1_000, verifiedBy: vb("stor-pass") }], presentation: { kind: "siwd" } }, reqLei, resolveVR, NOW).ok,
+      expiresOnlyMaxAge: vetMatch({ bundleVersion: "1", presentedBy: "lei:984500ABCDEF12345678", presentedAt: NOW, claims: [{ ref: "lei:984500ABCDEF12345678", expiresAt: NOW + 1_000, verifiedBy: vb("stor-pass") }], presentation: { kind: "siwd" } }, vetMaxAgeReq, resolveVR, NOW).ok,
+      stalePresentedByPrimary: vetMatch({ bundleVersion: "1", presentedBy: "lei:STALE", presentedAt: NOW, claims: [{ ref: "lei:STALE", issuedAt: NOW - 10_000, expiresAt: NOW - 1, verifiedBy: vb("stor-pass") }, { ref: "lei:FRESH", issuedAt: NOW - 1_000, expiresAt: NOW + 60_000, verifiedBy: vb("stor-pass") }], presentation: { kind: "siwd" } }, { ...vetMaxAgeReq, primaryClaimSelector: "lei" }, resolveVR, NOW).ok,
+    },
+    { absentBoth: false, expired: false, expiresOnly: true, expiresOnlyMaxAge: false, stalePresentedByPrimary: false });
+
+  const aggregationOneOf: BundleRequirement = { requirementVersion: "1", required: [], oneOf: [[{ scheme: "lei", verificationRequired: true }, { scheme: "domain", verificationRequired: true }]] };
+  rec("vet-oneof-error-over-fail", "vet", "§7.7.1", "oneOf within-group precedence: error > indeterminate > fail",
+    evaluateVetRequirement(mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-error") },
+    ]), aggregationOneOf, resolveVR, NOW),
+    { decision: "error", errorClass: "transient" });
+  rec("vet-oneof-indeterminate-over-fail", "vet", "§7.7.1", "oneOf within-group precedence: indeterminate > fail when no error/pass is present",
+    evaluateVetRequirement(mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-indet") },
+    ]), aggregationOneOf, resolveVR, NOW),
+    { decision: "indeterminate" });
+  rec("vet-cross-accumulator-fail-over-error", "vet", "§7.7.1", "cross-accumulator precedence across required + oneOf: fail > error > indeterminate",
+    evaluateVetRequirement(mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-error") },
+    ]), { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }], oneOf: [[{ scheme: "domain", verificationRequired: true }]] }, resolveVR, NOW),
+    { decision: "fail", errorClass: "permanent" });
+  rec("vet-counterparty-malformed-attribution", "vet", "§7.8.2", "VPC-4/R8-E: counterparty-malformed oneOf alternative keeps decision=error but attributes phaseSummary.errorClass=counterparty",
+    evaluateVetRequirement(mk([
+      { ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") },
+      { ref: "domain:example.com", verifiedBy: vb("stor-counterparty-malformed") },
+    ]), aggregationOneOf, resolveVR, NOW),
+    { decision: "error", errorClass: "counterparty" });
+
+  golden["vet"] = {
+    decisions: VET_DECISIONS,
+    address: vetAttestationAddress("job-abc", "LEI", "984500ABCDEF12345678", 3),
+    cf4Address: vetAttestationAddress("job-abc", "CCI-XM", "evm:mainnet:0x1234", 3),
+    cf4Composite: vetCompositeAddress("job-abc", "cci-xm:evm:mainnet:0x1234"),
+    retryBudgetDefault: 3,
+    aggregation: {
+      oneOfPrecedence: "error > indeterminate > fail",
+      crossAccumulatorPrecedence: "fail > error > indeterminate",
+      counterpartyMalformedErrorClass: "counterparty",
+    },
+  };
 }
 
 // ── §14.3 — DACS-3 Negotiate: §8.5.2 listing-conformance validation ──────────
@@ -663,9 +855,10 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   // at the SETTLEMENT layer through the non-terminal ST-8 `settle-asymmetric` state (→ terminal `completed` on htlc-claim,
   // → terminal `failed-counterparty` on window expiry; covered by the §14.5 verify-st-asymmetric-* vectors). A dispute
   // over the window-expired terminal `failed-counterparty` uses a standard remedy — there is no spec correction path to
-  // assert as golden. Re-aligning the DACS-X prototype's `correction-ordered` remedy + the htlc9 fixture outcome is
-  // tracked for #99 convergence. ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF remains exercised by
-  // the bundle-htlc9-pass vector (structural bundle verification + reveal-txRef presence).
+  // assert as golden. The DACS-X prototype's `correction-ordered` remedy is now REMOVED (commit "remove spec-obsolete
+  // correction-ordered remedy"); re-framing the htlc9 fixture outcome (failed-substrate → failed-counterparty) +
+  // adopting the R5-3 ST-8 representation remains, gated on the Round-5 re-seal. ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF
+  // remains exercised by the bundle-htlc9-pass vector (structural bundle verification + reveal-txRef presence).
 
   golden["dispute"] = {
     status: "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
@@ -676,9 +869,9 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     now: NOW,
     decisions: {
       happy: "pass", open: "indeterminate", badRecordKey: "fail", malformedKey: "error",
-      ruleSwap: "fail", wrongOutcomeKey: "fail", nonCanonicalAmount: "fail", unknownBundle: "fail", htlc9Correction: "pass",
+      ruleSwap: "fail", wrongOutcomeKey: "fail", nonCanonicalAmount: "fail", unknownBundle: "fail",
     },
-    inputs: "constructed deterministically in conformance/run.ts from the seeds above; divergent-bundle refs point to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json; HTLC-9 correction ref points to conformance/fixtures/attestation-bundle-htlc9.json",
+    inputs: "constructed deterministically in conformance/run.ts from the seeds above; divergent-bundle refs point to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json; HTLC-9 bundle ref points to conformance/fixtures/attestation-bundle-htlc9.json",
   };
 }
 
@@ -781,10 +974,20 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       },
     };
   };
-  const refreshRef = (result: PhaseHandlerResult, evidence: SettlementEvidence): PhaseHandlerResult => ({
-    ...result,
-    attestationRef: { ...result.attestationRef!, contentHash: evidenceHash(evidence) },
-  });
+  const refreshRef = (result: PhaseHandlerResult, evidence: SettlementEvidence, paymentInput?: PaymentPhaseInput): PhaseHandlerResult => {
+    const currentId = result.attestationRef?.id;
+    const nextId = paymentInput !== undefined && currentId?.startsWith("dacs4:payment:")
+      ? paymentEvidenceAddress(evidence.jobId, paymentInput.rail.railId, evidence.phaseIndex, currentId.endsWith(":resolved"))
+      : currentId;
+    return {
+      ...result,
+      attestationRef: {
+        ...result.attestationRef!,
+        ...(nextId !== undefined ? { id: nextId } : {}),
+        contentHash: evidenceHash(evidence),
+      },
+    };
+  };
   const paymentCase = (over: {
     result?: Partial<PhaseHandlerResult>;
     evidence?: Partial<Omit<SettlementEvidence, "signature">>;
@@ -794,10 +997,72 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     const { signature: _signature, ...unsignedBase } = settlementPayment.evidence;
     const evidence = signSettlement({ ...unsignedBase, ...over.evidence });
     const paymentInput = over.paymentInput?.(settlementPayment.paymentInput) ?? settlementPayment.paymentInput;
-    const resultBase = over.refreshHash === false ? settlementPayment.result : refreshRef(settlementPayment.result, evidence);
+    const resultBase = over.refreshHash === false ? settlementPayment.result : refreshRef(settlementPayment.result, evidence, paymentInput);
     const result = { ...resultBase, ...over.result };
     return { result, evidence, paymentInput };
   };
+  const htlcParameters = {
+    timelockSourceSec: 3_600,
+    timelockDestSec: 1_800,
+    sourceFinalitySec: 900,
+    safetyWindowSec: 600,
+  };
+  const htlcRail = (parameters: Record<string, unknown> = htlcParameters): RailDefinition => ({
+    railVersion: 1,
+    railId: "sepolia-polygon-htlc-usdc",
+    railType: "cross-chain-htlc",
+    asset: {
+      kind: "stablecoin-cross-chain",
+      canonicalSymbol: "USDC",
+      routes: [{ sourceChainId: "eip155:11155111", destChainId: "eip155:80002" }],
+    },
+    network: { kind: "cross-chain", mechanism: "htlc" },
+    phaseHandler: "pay-cross-chain-htlc",
+    parameters,
+    availability: "mocked",
+    governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+    signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-htlc-rail-signature" },
+  });
+  const htlcPaymentCase = (parameters: Record<string, unknown> = htlcParameters) => paymentCase({
+    evidence: {
+      phase: "pay-cross-chain-htlc",
+      settlementFinality: { model: "htlc-reveal", finalityObservedAt: 1_780_014_501_000 },
+      paymentTxRefs: [{ rail: "sepolia-polygon-htlc-usdc", txHash: "polygon-amoy:0xhtlc-reveal-0001", kind: "htlc-reveal" }],
+    },
+    result: {
+      txRefs: [{ rail: "sepolia-polygon-htlc-usdc", txHash: "polygon-amoy:0xhtlc-reveal-0001", kind: "htlc-reveal" }],
+    },
+    paymentInput: (input) => ({ ...input, rail: htlcRail(parameters) }),
+  });
+  const liquidityTankPaymentCase = () => paymentCase({
+    evidence: {
+      phase: "pay-cross-chain-liquidity-tank",
+      settlementFinality: { model: "liquidity-tank", finalityObservedAt: 1_780_014_502_000 },
+      paymentTxRefs: [{ rail: "base-arbitrum-tank-usdc", txHash: "arbitrum:0xtank-completed-0001", kind: "liquidity-tank-completed" }],
+    },
+    result: {
+      txRefs: [{ rail: "base-arbitrum-tank-usdc", txHash: "arbitrum:0xtank-completed-0001", kind: "liquidity-tank-completed" }],
+    },
+    paymentInput: (input) => ({
+      ...input,
+      rail: {
+        railVersion: 1,
+        railId: "base-arbitrum-tank-usdc",
+        railType: "cross-chain-liquidity-tank",
+        asset: {
+          kind: "stablecoin-cross-chain",
+          canonicalSymbol: "USDC",
+          routes: [{ sourceChainId: "eip155:8453", destChainId: "eip155:42161" }],
+        },
+        network: { kind: "cross-chain", mechanism: "liquidity-tank" },
+        phaseHandler: "pay-cross-chain-liquidity-tank",
+        parameters: { routeId: "base-arbitrum-usdc" },
+        availability: "mocked",
+        governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+        signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-tank-rail-signature" },
+      },
+    }),
+  });
   const decide = (input: { result: PhaseHandlerResult; evidence: SettlementEvidence; expectedOrchestrator?: ClaimReference; paymentInput?: PaymentPhaseInput; resolveKey?: (claim: ClaimReference) => Uint8Array | null | undefined }): string =>
     verifySettlementEvidence({
       result: input.result,
@@ -841,6 +1106,19 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
 
   rec("settlement-wrong-anchor-fail", "settlement", "§9.5.1 PC-2", "result.attestationRef id not at expected dacs4 payment anchor → FAIL",
     decide(paymentCase({ result: { attestationRef: { ...settlementPayment.result.attestationRef!, id: "dacs4:payment:wrong:rail" } } })), "fail");
+
+  const colonRail = paymentCase({
+    paymentInput: (input) => ({ ...input, rail: { ...input.rail, railId: "evm-erc20:1:USDC" } }),
+  });
+  rec("cf4-dacs4-payment-address", "settlement", "§6.3.4 CF-4", "dacs4 payment evidence address encodes a colon-bearing railId while phaseIndex stays structural",
+    {
+      address: colonRail.result.attestationRef?.id,
+      decision: decide(colonRail),
+    },
+    {
+      address: paymentEvidenceAddress(colonRail.evidence.jobId, "evm-erc20:1:USDC", colonRail.evidence.phaseIndex),
+      decision: "pass",
+    });
 
   rec("settlement-attestationref-hash-mismatch-fail", "settlement", "§9.5.1 PC-3", "result.attestationRef contentHash not equal evidenceHash(evidence) → FAIL",
     decide(paymentCase({ refreshHash: false, evidence: { paymentAmount: { amount: "6", currency: "USDC" } } })), "fail");
@@ -916,6 +1194,25 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("settlement-rail-network-mismatch-fail", "settlement", "§9.4.3 RD-5", "evm-erc20 rail with a solana network → FAIL (railType↔asset/network coherence)",
     decide(paymentCase({ paymentInput: (i) => ({ ...i, rail: { ...i.rail, network: { kind: "solana", cluster: "mainnet" } } }) })), "fail");
 
+  rec("settlement-htlc-finality-params-pass", "settlement", "§9.5.4 HTLC-7", "HTLC rail pins timelockSourceSec/timelockDestSec/sourceFinalitySec/safetyWindowSec and satisfies source-margin inequality → PASS",
+    decide(htlcPaymentCase()), "pass");
+
+  const { sourceFinalitySec: _sourceFinalitySec, ...missingSourceFinality } = htlcParameters;
+  rec("settlement-htlc-missing-source-finality-fail", "settlement", "§9.5.4 HTLC-7", "HTLC rail missing required sourceFinalitySec → FAIL",
+    decide(htlcPaymentCase(missingSourceFinality)), "fail");
+
+  const { safetyWindowSec: _safetyWindowSec, ...missingSafetyWindow } = htlcParameters;
+  rec("settlement-htlc-missing-safety-window-fail", "settlement", "§9.5.4 HTLC-7", "HTLC rail missing required safetyWindowSec → FAIL",
+    decide(htlcPaymentCase(missingSafetyWindow)), "fail");
+
+  rec("settlement-htlc-insufficient-margin-fail", "settlement", "§9.5.4 HTLC-7", "HTLC source timelock not greater than dest timelock + source finality + safety → FAIL",
+    decide(htlcPaymentCase({ ...htlcParameters, timelockSourceSec: 3_300 })), "fail");
+
+  const anchorPendingTank = liquidityTankPaymentCase();
+  const { attestationRef: _anchorPendingRef, ...anchorPendingResult } = anchorPendingTank.result;
+  rec("settlement-cross-chain-anchor-pending-pass", "settlement", "§9.5.1 PC-7", "cross-chain payment with irreversible foreign-chain value movement may return ok:true + txRefs while SR-2 anchoring is pending",
+    decide({ ...anchorPendingTank, result: anchorPendingResult }), "pass");
+
   // POSITIVE goldens locking the deliberate conformance-scope interpretation (RD-5 = kinds only; SIG-5 open-world) —
   // documented so it's auditable and not silently re-litigated by a later review round.
   rec("settlement-cross-chainid-matching-kind-pass", "settlement", "§9.4.3 RD-5", "rail with matching KINDS but asset.chainId≠network.chainId → PASS (RD-5 binds kinds, not chainId-equality)",
@@ -963,6 +1260,11 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       underpaymentVsAgreement: "fail",
       incoherentRailTypeHandler: "fail",
       railNetworkMismatch: "fail",
+      htlcFinalityParams: "pass",
+      htlcMissingSourceFinality: "fail",
+      htlcMissingSafetyWindow: "fail",
+      htlcInsufficientMargin: "fail",
+      crossChainAnchorPending: "pass",
       crossChainIdMatchingKindPass: "pass",
       deliveryExtraPaymentFieldPass: "pass",
     },
@@ -1022,6 +1324,28 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   // §10.11 suppression / perspective_flip: scoring the WITHDRAWER (seller) over ONLY the victim's buyer-anchored copy
   // → no seller self_copy → perspective_flip(aborted-by-other)=aborted-by-self → the withdrawer still takes the hit.
   const perspectiveFlipOnly = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", [verifySession.reconcileVictimBuyer], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.5.1 guard (i): a single-signed terminal failed-counterparty copy is dropped before it can perspective_flip.
+  const baseCompleted = reps.find((b) => b.outcome === "completed")!;
+  const singleSignedCounterparty = {
+    ...verifySession.divergentSeller,
+    finalisedAt: VERIFY_REPUTATION_WINDOW_START + 9_000,
+    signatures: verifySession.divergentSeller.signatures.filter((signature) => signature.party === VERIFY_SELLER_CLAIM),
+  };
+  const singleSignedDropped = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", [baseCompleted, singleSignedCounterparty], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.5.1 guard (ii): contradictory self/counterparty copies are excluded from all metrics, not trusted by self-copy.
+  const divergentExcluded = deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", [
+    baseCompleted,
+    { ...verifySession.divergentBuyer, finalisedAt: VERIFY_REPUTATION_WINDOW_START + 9_000 },
+    { ...verifySession.divergentSeller, finalisedAt: VERIFY_REPUTATION_WINDOW_START + 9_000 },
+  ], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  // §10.5.1 guard (iii): orchestrator copies are evidence-only noise; the buyer/seller counterparty copy is the only flip source.
+  const orchestratorNoise = {
+    ...verifySession.divergentBuyer,
+    jobId: verifySession.reconcileVictimBuyer.jobId,
+    finalisedAt: verifySession.reconcileVictimBuyer.finalisedAt,
+    anchoredByRole: "orchestrator" as const,
+  };
+  const orchestratorIgnored = deriveReputation(VERIFY_SELLER_CLAIM, () => "seller", [orchestratorNoise, verifySession.reconcileVictimBuyer], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
   // §10.5.1 (R4-B): a party scored over only COUNTERPARTY-anchored bundles IS scored via perspective_flip — NOT
   // excluded (the pre-R4-B anchoredBy-only narrowing was the defect). The buyer-anchored reputation set scored for the
   // SELLER flips each outcome to the seller's perspective: failed-counterparty→failed-perm, aborted-by-other→aborted-by-self.
@@ -1047,6 +1371,15 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   // self_copy and perspective_flip it into a spurious counterparty fault.
   const mixedRoleResolve = (jobId: string): "buyer" | "seller" => (jobId === VERIFY_MIXEDROLE_JOB_ID ? "seller" : "buyer");
   const mixedRole = deriveReputation(VERIFY_BUYER_CLAIM, mixedRoleResolve, [abortSelfBundle, verifySession.mixedRoleSellerBundle], VERIFY_REPUTATION_WINDOW_START, VERIFY_REPUTATION_WINDOW_END, VERIFY_REPUTATION_COMPUTED_AT);
+  const reputationByHash = new Map(reps.map((bundle) => [bundleHash(bundle), bundle]));
+  const reputationRerun = deriveReputation(
+    VERIFY_BUYER_CLAIM,
+    () => "buyer",
+    reputation.bundleRefs.map((ref) => reputationByHash.get(ref.contentHash)!),
+    reputation.windowStart,
+    reputation.windowEnd,
+    reputation.computedAt,
+  );
 
   rec("verify-address-buyer", "verify", "§10.4.2", "buyer bundle address is stor-{sha256(jobId + \"-bundle-buyer\")}",
     bundleAddress("job-1", "buyer"), "stor-c7bc689288bad9d6f448ca14c9aa949a4c9574a317f4a591c7f9486f4f7a6b8f");
@@ -1056,6 +1389,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       bundleAddress("job-1", "seller") !== bundleAddress("job-1", "orchestrator"),
     ],
     [true, true]);
+  rec("cf4-dacs5-rating-address", "verify", "§6.3.4 CF-4", "dacs5 rating address encodes a colon-bearing rater ClaimReference",
+    ratingAddress("job-abc", "cci-xm:evm:mainnet:0x1234"), "dacs5:rating:job-abc:cci-xm%3Aevm%3Amainnet%3A0x1234");
   rec("verify-lookup-both", "verify", "§10.4.3(a)", "two-sided lookup fetches both expected addresses",
     lookupShape(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchDivergent), { buyer: true, seller: true });
   rec("verify-lookup-one", "verify", "§10.4.3(a)", "two-sided lookup preserves a one-sided fetch result",
@@ -1111,6 +1446,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     isLegalTransition("settle-pending", "settle-asymmetric"), true);
   rec("verify-st-asymmetric-resolve-legal", "verify", "§10.3.1 ST-8", "settle-asymmetric resolves forward: → settle-completed (htlc-claim in window) or → settle-failed (window expiry)",
     [isLegalTransition("settle-asymmetric", "settle-completed"), isLegalTransition("settle-asymmetric", "settle-failed")], [true, true]);
+  rec("verify-st-asymmetric-pause-resume-legal", "verify", "§10.3.1 ST-8/R6-6", "settle-asymmetric may pause while anchoring the :resolved record and resume to settle-asymmetric",
+    [isLegalTransition("settle-asymmetric", "substrate-failure-paused"), isLegalTransition("substrate-failure-paused", "settle-asymmetric")], [true, true]);
   rec("verify-st-asymmetric-nonterminal", "verify", "§10.3.1 ST-6/ST-8", "settle-asymmetric is non-terminal: no direct → finalised, and no bundle outcome until it resolves",
     [isLegalTransition("settle-asymmetric", "finalised"), stateToOutcome("settle-asymmetric")], [false, null]);
 
@@ -1147,6 +1484,19 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("verify-reputation-window", "verify", "§10.5.1", "window filtering excludes out-of-window bundles from scoped count",
     deriveReputation(VERIFY_BUYER_CLAIM, () => "buyer", reps, VERIFY_REPUTATION_WINDOW_END + 1, VERIFY_REPUTATION_WINDOW_END + 2_000, VERIFY_REPUTATION_COMPUTED_AT).bundleCount,
     1);
+  rec("verify-reputation-determinism-receipt", "verify", "§10.5.3", "windowingBasis is recorded and bundleRefs are ascending contentHash; re-derivation from bundleRefs reproduces metrics + count",
+    {
+      windowingBasis: reputation.windowingBasis,
+      sortedBundleRefs: reputation.bundleRefs.map((ref) => ref.contentHash).join("|") === [...reputation.bundleRefs.map((ref) => ref.contentHash)].sort().join("|"),
+      rerunMetrics: reputationRerun.metrics,
+      rerunBundleCount: reputationRerun.bundleCount,
+    },
+    {
+      windowingBasis: "finalisedAt",
+      sortedBundleRefs: true,
+      rerunMetrics: reputation.metrics,
+      rerunBundleCount: reputation.bundleCount,
+    });
   rec("verify-reputation-ratings-volume-l3-null", "verify", "§10.5.1", "L3 leaves rating/volume resolution unset without a resolver",
     {
       averageBuyerRating: reputation.metrics.averageBuyerRating,
@@ -1165,6 +1515,37 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   rec("verify-reputation-perspective-flip", "verify", "§10.5.1/§10.11", "withdrawer scored over ONLY the victim's counterparty-anchored copy → perspective_flip(aborted-by-other)=aborted-by-self → withdrawer still takes the hit",
     { bundleCount: perspectiveFlipOnly.bundleCount, completionRate: perspectiveFlipOnly.metrics.completionRate, counterpartyDisputeRate: perspectiveFlipOnly.metrics.counterpartyDisputeRate },
     { bundleCount: 1, completionRate: 0, counterpartyDisputeRate: 0 });
+  rec("verify-reputation-single-signed-non-abort-dropped", "verify", "§10.5.1", "guard (i): a single-signed seller-anchored failed-counterparty copy is dropped before perspective_flip can depress the buyer's score",
+    {
+      verifyBundleDecision: verifyBundle(singleSignedCounterparty, verifySession.resolveKey),
+      bundleCount: singleSignedDropped.bundleCount,
+      completionRate: singleSignedDropped.metrics.completionRate,
+      counterpartyDisputeRate: singleSignedDropped.metrics.counterpartyDisputeRate,
+      bundleRefs: singleSignedDropped.bundleRefs.map((ref) => ref.id),
+    },
+    {
+      verifyBundleDecision: "fail",
+      bundleCount: 1,
+      completionRate: 1,
+      counterpartyDisputeRate: 0,
+      bundleRefs: [baseCompleted.jobId],
+    });
+  rec("verify-reputation-divergence-excluded", "verify", "§10.5.1/§10.4.3(d)", "guard (ii): contradictory self/counterparty copies are excluded from BOTH numerator and party_fault_denom",
+    {
+      bundleCount: divergentExcluded.bundleCount,
+      completionRate: divergentExcluded.metrics.completionRate,
+      counterpartyDisputeRate: divergentExcluded.metrics.counterpartyDisputeRate,
+      bundleRefs: divergentExcluded.bundleRefs.map((ref) => ref.id),
+    },
+    { bundleCount: 1, completionRate: 1, counterpartyDisputeRate: 0, bundleRefs: [baseCompleted.jobId] });
+  rec("verify-reputation-orchestrator-ignored", "verify", "§10.5.1", "guard (iii): orchestrator-anchored copies are evidence-only and never chosen as the counterparty perspective",
+    {
+      bundleCount: orchestratorIgnored.bundleCount,
+      completionRate: orchestratorIgnored.metrics.completionRate,
+      counterpartyDisputeRate: orchestratorIgnored.metrics.counterpartyDisputeRate,
+      bundleRefs: orchestratorIgnored.bundleRefs.map((ref) => ref.id),
+    },
+    { bundleCount: 1, completionRate: 0, counterpartyDisputeRate: 0, bundleRefs: [verifySession.reconcileVictimBuyer.jobId] });
   rec("verify-reputation-seller-perspective-flip", "verify", "§10.5.1", "R4-B fix: a party scored over only counterparty-anchored bundles IS scored via perspective_flip, NOT excluded (pre-R4-B anchoredBy-only narrowing was the defect)",
     { bundleCount: sellerPerspective.bundleCount, completionRate: sellerPerspective.metrics.completionRate, counterpartyDisputeRate: sellerPerspective.metrics.counterpartyDisputeRate },
     { bundleCount: 5, completionRate: 0.25, counterpartyDisputeRate: 0.25 });
@@ -1209,9 +1590,11 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     reputation: {
       windowStart: VERIFY_REPUTATION_WINDOW_START,
       windowEnd: VERIFY_REPUTATION_WINDOW_END,
+      windowingBasis: reputation.windowingBasis,
       computedAt: VERIFY_REPUTATION_COMPUTED_AT,
       bundleCount: reputation.bundleCount,
       metrics: reputation.metrics,
+      bundleRefs: reputation.bundleRefs,
     },
     consistencyChecks: {
       crossSessionJobIdIgnored: crossSessionVerdict,
@@ -1260,7 +1643,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2) + 12 governance (§14.7 GOV-1..3); byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 15 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 36 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),

@@ -164,20 +164,6 @@ export function validateRemedy(remedy: RemedyDecision): DisputeCheck {
     }
     case "no-fault":
       return { ok: true };
-    case "correction-ordered": {
-      // HTLC-9 / §9.8: an asymmetric settlement MUST close as a failure, never a
-      // refund (refunding double-pays the payee already paid on the dest chain).
-      if (remedy.correctedOutcome !== "failure") {
-        return { ok: false, reason: "HTLC-9 correction MUST close as failure, never refund/success (§9.8)" };
-      }
-      if (!remedy.reason || typeof remedy.reason !== "string") {
-        return { ok: false, reason: "correction missing structured reason" };
-      }
-      if (!remedy.revealTxRef || typeof remedy.revealTxRef !== "string") {
-        return { ok: false, reason: "correction missing htlc-reveal txRef (§9.5.4)" };
-      }
-      return { ok: true };
-    }
     default:
       return { ok: false, reason: `unknown remedy kind: ${(remedy as { kind: string }).kind}` };
   }
@@ -240,12 +226,6 @@ export function reputationReweight(
       break;
     case "no-fault":
       effectiveWeight = prior.weight; // stands, but now adjudicated → immune to re-farming
-      break;
-    case "correction-ordered":
-      // HTLC-9 asymmetric settlement is a failure, weighted strictly worse than
-      // a clean timeout in DACS-5 derivation (§9.8). Voided here; the structured
-      // reason rides with the outcome hash for derivation to penalise further.
-      effectiveWeight = 0;
       break;
   }
   return {

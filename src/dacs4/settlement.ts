@@ -3,6 +3,7 @@ import { sha256Hex } from "../hash.ts";
 import { verifyArtifactSignature } from "../signing.ts";
 import { canonicalDecimal, assertPositiveAmount } from "../decimal.ts";
 import { schemeOf, type ClaimReference } from "../dacs1.ts";
+import { cf4Encode } from "../logical-address.ts";
 import type { AttestationRef, ChainTxRef } from "../dacs5/bundle.ts";
 
 // §9.4.3 / signing registry: the canonical AttestationRef.kind label for a DACS-4 SettlementEvidence reference.
@@ -26,6 +27,8 @@ export type SettlementEvidence = {
   evidenceVersion: "1";
   jobId: string;
   phase: PaymentPhaseType | DeliveryPhaseType;
+  // §9.5.1 PC-2 (R5-3): repeated pay-* phases are discriminated by a fixed structural phaseIndex segment.
+  phaseIndex: number;
   outcome: "success" | "failure";
   reason?: string;
   paymentTxRefs?: ChainTxRef[];
@@ -34,6 +37,8 @@ export type SettlementEvidence = {
   deliverableContentHash?: string;
   deliverableAnchor?: { kind: string; locator: string };
   attestationRef?: AttestationRef;
+  // §9.5.1 PC-2 (R5-3): the optional :resolved record supersedes the interim asymmetric settlement evidence.
+  supersedesEvidenceRef?: AttestationRef;
   settlementFinality?: SettlementFinalityRecord;
   amendmentRefs?: AttestationRef[];
   observedAt: number;
@@ -121,6 +126,10 @@ export function evidenceHash(evidence: SettlementEvidence): string {
   return sha256Hex(canonicalize(withoutSignature(evidence as unknown as Record<string, unknown>, "signature")));
 }
 
+export function paymentEvidenceAddress(jobId: string, railId: string, phaseIndex: number, resolved = false): string {
+  return `dacs4:payment:${jobId}:${cf4Encode(railId)}:${phaseIndex}${resolved ? ":resolved" : ""}`;
+}
+
 export function currencyResolves(amount: PriceTerm, asset: AssetSpec): boolean {
   switch (asset.kind) {
     case "erc20":
@@ -168,27 +177,40 @@ export function verifySettlementEvidence(input: {
     // PC-4 (§9.7 L2706): failure settlement evidence MUST explain the reason.
     if (evidence.outcome === "failure" && (typeof evidence.reason !== "string" || evidence.reason.length === 0)) return "fail";
 
-    // PC-2 (§9.5.1 L2559): handler return MUST address the expected DACS-4 anchor.
-    if (result.attestationRef === undefined) return "fail";
-    // PC-3 (§9.5.1 L2559): the anchored reference MUST be labelled as DACS-4 evidence, not another artifact kind —
-    // a consumer dispatching on AttestationRef.kind must not mistake a mislabelled ref for settlement evidence.
-    if (result.attestationRef.kind !== DACS4_EVIDENCE_KIND) return "fail";
-    if (isPayment) {
-      const railId = paymentInput!.rail.railId;
-      if (result.attestationRef.id !== `dacs4:payment:${evidence.jobId}:${railId}`) return "fail";
-    } else if (evidence.phase === "deliver-entitlement") {
-      // §9.6 (L2683): dacs4:entitlement:{jobId}:{renewalSeq} (renewalSeq a non-negative integer; 0 for the original grant).
-      if (!new RegExp(`^dacs4:entitlement:${escapeRegExp(evidence.jobId)}:\\d+$`).test(result.attestationRef.id)) return "fail";
-    } else {
-      // §9.6 (L2647/L2689): deliver-storage-program / deliver-attested-payload anchor at dacs4:deliverable:{jobId}.
-      if (result.attestationRef.id !== `dacs4:deliverable:${evidence.jobId}`) return "fail";
-    }
-
     const computedHash = evidenceHash(evidence);
     if (!HASH_RE.test(computedHash)) return "error";
 
-    // PC-3 (§9.5.1 L2559): result.attestationRef MUST point to this exact signature-free evidence hash.
-    if (result.attestationRef.contentHash !== computedHash) return "fail";
+    const anchorPending = result.attestationRef === undefined && allowsCrossChainAnchorPending(result, evidence, paymentInput);
+    if (result.attestationRef === undefined) {
+      if (!anchorPending) return "fail";
+    } else {
+      // PC-3 (§9.5.1 L2559): the anchored reference MUST be labelled as DACS-4 evidence, not another artifact kind —
+      // a consumer dispatching on AttestationRef.kind must not mistake a mislabelled ref for settlement evidence.
+      if (result.attestationRef.kind !== DACS4_EVIDENCE_KIND) return "fail";
+      if (isPayment) {
+        const railId = paymentInput!.rail.railId;
+        // §9.5.1 PC-2 (R5-3): CF-4 payment anchors are dacs4:payment:{jobId}:{railId}:{phaseIndex} with optional
+        // trailing :resolved for the post-asymmetric record; phaseIndex/resolved are fixed structural segments.
+        const baseId = paymentEvidenceAddress(evidence.jobId, railId, evidence.phaseIndex);
+        const resolvedId = paymentEvidenceAddress(evidence.jobId, railId, evidence.phaseIndex, true);
+        const isResolvedRecord = result.attestationRef.id === resolvedId;
+        if (result.attestationRef.id !== baseId && !isResolvedRecord) return "fail";
+        if (isResolvedRecord) {
+          if (evidence.supersedesEvidenceRef === undefined) return "fail";
+        } else if (evidence.supersedesEvidenceRef !== undefined) {
+          return "fail";
+        }
+      } else if (evidence.phase === "deliver-entitlement") {
+        // §9.6 (L2683): dacs4:entitlement:{jobId}:{renewalSeq} (renewalSeq a non-negative integer; 0 for the original grant).
+        if (!new RegExp(`^dacs4:entitlement:${escapeRegExp(evidence.jobId)}:\\d+$`).test(result.attestationRef.id)) return "fail";
+      } else {
+        // §9.6 (L2647/L2689): deliver-storage-program / deliver-attested-payload anchor at dacs4:deliverable:{jobId}.
+        if (result.attestationRef.id !== `dacs4:deliverable:${evidence.jobId}`) return "fail";
+      }
+
+      // PC-3 (§9.5.1 L2559): result.attestationRef MUST point to this exact signature-free evidence hash.
+      if (result.attestationRef.contentHash !== computedHash) return "fail";
+    }
 
     if (isPayment) {
       // PC-1/PC-3 (§9.5.1 L2559, §5 L228): the unsigned handler-return txRefs MUST match the signed evidence's
@@ -281,6 +303,7 @@ function isStructurallySupported(result: PhaseHandlerResult, evidence: Settlemen
   if (evidence?.evidenceVersion !== "1") return false;
   if (typeof evidence.jobId !== "string" || evidence.jobId.length === 0) return false;
   if (!PAYMENT_PHASE_TYPES.has(evidence.phase as PaymentPhaseType) && !DELIVERY_PHASE_TYPES.has(evidence.phase as DeliveryPhaseType)) return false;
+  if (!Number.isSafeInteger(evidence.phaseIndex) || evidence.phaseIndex < 0) return false;
   if (evidence.outcome !== "success" && evidence.outcome !== "failure") return false;
   if (!Number.isSafeInteger(evidence.observedAt)) return false;
   if (!isComponentSignature(evidence.signature)) return false;
@@ -289,6 +312,7 @@ function isStructurallySupported(result: PhaseHandlerResult, evidence: Settlemen
   if (evidence.paymentAmount !== undefined && (!isPriceTerm(evidence.paymentAmount) || !isCanonicalPositiveAmount(evidence.paymentAmount.amount))) return false;
   if (evidence.paymentFee !== undefined && (!isPriceTerm(evidence.paymentFee) || !isCanonicalNonNegativeAmount(evidence.paymentFee.amount))) return false;
   if (evidence.attestationRef !== undefined && !isAttestationRef(evidence.attestationRef)) return false;
+  if (evidence.supersedesEvidenceRef !== undefined && !isAttestationRef(evidence.supersedesEvidenceRef)) return false;
   if (evidence.amendmentRefs !== undefined && (!Array.isArray(evidence.amendmentRefs) || evidence.amendmentRefs.some((r) => !isAttestationRef(r)))) return false;
   if (evidence.deliverableAnchor !== undefined && (typeof evidence.deliverableAnchor.kind !== "string" || evidence.deliverableAnchor.kind.length === 0 || typeof evidence.deliverableAnchor.locator !== "string" || evidence.deliverableAnchor.locator.length === 0)) return false;
   // §9.6 (L2647): deliverableContentHash = sha256(canonical_payload) — MUST be a 64-char lowercase-hex hash, not arbitrary text.
@@ -323,6 +347,7 @@ function isRailDefinition(rail: RailDefinition): boolean {
   // RD-5: railType MUST match the asset AND network kinds (e.g. an evm-erc20 rail with a Solana network is rejected).
   if (!isNetworkSpec(rail.network)) return false;
   if (!railTypeMatchesAssetAndNetwork(rail)) return false;
+  if (rail.railType === "cross-chain-htlc" && !validHtlcRailParameters(rail)) return false;
   return true;
 }
 
@@ -423,7 +448,7 @@ function validPaymentFinality(finality: SettlementFinalityRecord, rail: RailDefi
     case "solana-spl":
       return commitmentFinality(finality, rail);
     case "cross-chain-htlc":
-      return finality.model === "htlc-reveal";
+      return finality.model === "htlc-reveal" && validHtlcRailParameters(rail);
     case "cross-chain-liquidity-tank":
       return finality.model === "liquidity-tank";
     case "ap2":
@@ -432,6 +457,32 @@ function validPaymentFinality(finality: SettlementFinalityRecord, rail: RailDefi
       // PC-6 (§9.7 L2745): x402 normally has block-depth; provider-receipt is accepted for no-settlement-tx fallback.
       return finality.model === "provider-receipt" || blockDepthFinality(finality, rail);
   }
+}
+
+function allowsCrossChainAnchorPending(
+  result: PhaseHandlerResult,
+  evidence: SettlementEvidence,
+  paymentInput: PaymentPhaseInput | undefined,
+): boolean {
+  if (paymentInput === undefined) return false;
+  if (result.ok !== true || evidence.outcome !== "success") return false;
+  if (evidence.settlementFinality === undefined) return false;
+  return paymentInput.rail.railType === "cross-chain-htlc" || paymentInput.rail.railType === "cross-chain-liquidity-tank";
+}
+
+function validHtlcRailParameters(rail: RailDefinition): boolean {
+  const timelockSourceSec = integerParameter(rail.parameters, "timelockSourceSec", 1);
+  const timelockDestSec = integerParameter(rail.parameters, "timelockDestSec", 1);
+  const sourceFinalitySec = integerParameter(rail.parameters, "sourceFinalitySec", 0);
+  const safetyWindowSec = integerParameter(rail.parameters, "safetyWindowSec", 0);
+  if (timelockSourceSec === undefined || timelockDestSec === undefined || sourceFinalitySec === undefined || safetyWindowSec === undefined) return false;
+  // HTLC-7: expiry_source > expiry_dest + source_finality + safety, evaluated against pinned rail params.
+  return timelockSourceSec > timelockDestSec + sourceFinalitySec + safetyWindowSec;
+}
+
+function integerParameter(parameters: Record<string, unknown>, key: string, min: number): number | undefined {
+  const value = parameters[key];
+  return Number.isSafeInteger(value) && typeof value === "number" && value >= min ? value : undefined;
 }
 
 function blockDepthFinality(finality: SettlementFinalityRecord, rail: RailDefinition): boolean {

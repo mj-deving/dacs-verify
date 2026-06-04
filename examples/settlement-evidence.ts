@@ -2,6 +2,7 @@ import { canonicalize } from "../src/canonicalize.ts";
 import { sha256Hex } from "../src/hash.ts";
 import {
   evidenceHash,
+  paymentEvidenceAddress,
   type PaymentPhaseInput,
   type PhaseHandlerResult,
   type SettlementEvidence,
@@ -19,6 +20,7 @@ export const SETTLEMENT_EVIDENCE_NOW = 1_780_014_400_000;
 export const SETTLEMENT_ORCHESTRATOR_CLAIM = "did:demos:orchestrator";
 export const SETTLEMENT_PAYER_CLAIM = "did:demos:buyer";
 export const SETTLEMENT_PAYEE_CLAIM = "did:demos:seller";
+export const SETTLEMENT_PHASE_INDEX = 0;
 
 function bundleHash(claim: ClaimReference, key: string): string {
   return sha256Hex(canonicalize({ primaryClaim: claim, publicKey: key }));
@@ -75,6 +77,7 @@ export function buildSettlementPaymentSuccess(): {
     evidenceVersion: "1",
     jobId,
     phase: "pay-evm-erc20",
+    phaseIndex: SETTLEMENT_PHASE_INDEX,
     outcome: "success",
     paymentTxRefs: [{ rail: railId, txHash: "polygon-amoy:0xsettle0001", kind: "payment" }],
     paymentAmount: amount,
@@ -93,7 +96,7 @@ export function buildSettlementPaymentSuccess(): {
   const result: PhaseHandlerResult = {
     ok: true,
     txRefs: [{ rail: railId, txHash: "polygon-amoy:0xsettle0001", kind: "payment" }],
-    attestationRef: { kind: "dacs-4-evidence", id: `dacs4:payment:${jobId}:${railId}`, contentHash: hash },
+    attestationRef: { kind: "dacs-4-evidence", id: paymentEvidenceAddress(jobId, railId, SETTLEMENT_PHASE_INDEX), contentHash: hash },
   };
 
   return {
@@ -122,6 +125,7 @@ export function buildSettlementDeliverySuccess(): {
     evidenceVersion: "1",
     jobId,
     phase: "deliver-storage-program",
+    phaseIndex: 0,
     outcome: "success",
     deliverableContentHash: contentHash,
     deliverableAnchor: { kind: "storage-program", locator: "stor-dacs-verify-delivery-0001" },

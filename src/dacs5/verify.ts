@@ -1,5 +1,6 @@
 import { sha256Hex } from "../hash.ts";
 import { type ClaimReference } from "../dacs1.ts";
+import { cf4Encode } from "../logical-address.ts";
 import type { PriceTerm } from "../dacs4/settlement.ts";
 import {
   bundleHash,
@@ -80,6 +81,7 @@ export interface ReputationDerivation {
     observedTransactionalVolume: PriceTerm[];
   };
   computedAt: number;
+  windowingBasis: "finalisedAt" | "sr2-anchor-timestamp";
   bundleRefs: AttestationRef[];
 }
 
@@ -96,13 +98,13 @@ const LEGAL_TRANSITIONS: ReadonlyMap<SessionState, ReadonlySet<SessionState>> = 
   // §10.3.1 ST-8 (R4-A): settle-pending may enter the non-terminal `settle-asymmetric` on the HTLC-9
   // dest-revealed-source-unclaimed condition (in addition to the prior settle-completed/-failed/abort/pause edges).
   ["settle-pending", transitionSet(["settle-completed", "settle-asymmetric", "settle-failed", "substrate-failure-paused", "aborted-by-self", "aborted-by-other"])],
-  // §10.3.1 ST-8: from settle-asymmetric, an htlc-claim within the expiry_source window resolves forward to
-  // settle-completed (terminal `completed`); window expiry goes to settle-failed (terminal `failed-counterparty`).
-  ["settle-asymmetric", transitionSet(["settle-completed", "settle-failed"])],
+  // §10.3.1 ST-8/R6-6: from settle-asymmetric, htlc-claim finality resolves to settle-completed; window expiry
+  // goes to settle-failed; SR-2 unavailability while anchoring the :resolved record may pause and later resume.
+  ["settle-asymmetric", transitionSet(["settle-completed", "settle-failed", "substrate-failure-paused"])],
   ["settle-completed", transitionSet(["rate-pending", "finalised"])],
   ["rate-pending", transitionSet(["rate-completed", "finalised"])],
   ["rate-completed", transitionSet(["finalised"])],
-  ["substrate-failure-paused", transitionSet(["vet-pending", "negotiate-pending", "commit-pending", "settle-pending", "failed-substrate"])],
+  ["substrate-failure-paused", transitionSet(["vet-pending", "negotiate-pending", "commit-pending", "settle-pending", "settle-asymmetric", "failed-substrate"])],
 ]);
 
 export const TERMINAL_STATES: ReadonlySet<SessionState> = new Set([
@@ -121,6 +123,10 @@ export function bundleAddress(jobId: string, role: "buyer" | "seller" | "orchest
   return `stor-${sha256Hex(`${jobId}-bundle-${role}`)}`;
 }
 
+export function ratingAddress(jobId: string, rater: ClaimReference): string {
+  return `dacs5:rating:${jobId}:${cf4Encode(rater)}`;
+}
+
 export function twoSidedLookup(jobId: string, fetch: BundleFetch): { buyer?: AttestationBundle; seller?: AttestationBundle } {
   const buyer = fetch(bundleAddress(jobId, "buyer"));
   const seller = fetch(bundleAddress(jobId, "seller"));
@@ -128,8 +134,12 @@ export function twoSidedLookup(jobId: string, fetch: BundleFetch): { buyer?: Att
   // §10.4.3(a): consumers MUST fetch both party-specific bundle addresses. The fetched bundle's embedded jobId MUST
   // match the looked-up jobId — the address is jobId-derived (§10.4.2), so a bundle for another session returned at
   // this address (replay / misreturn) is ignored, not consumed.
-  if (buyer !== null && buyer !== undefined && buyer.jobId === jobId) result.buyer = buyer;
-  if (seller !== null && seller !== undefined && seller.jobId === jobId) result.seller = seller;
+  // §10.4.2 (R5-1, b26a420): `anchoredByRole` is excluded from the bundle hash, so the SIGNATURE no longer binds it.
+  // Integrity of the field is instead an ADDRESS CROSS-CHECK: a copy fetched from the role-derived address MUST carry
+  // anchoredByRole === that role; a consumer MUST reject a copy whose anchoredByRole does not match the address it was
+  // fetched from (else a copy could be relabelled to flip derive()'s §10.5.1 perspective read). Mismatch → not consumed.
+  if (buyer !== null && buyer !== undefined && buyer.jobId === jobId && buyer.anchoredByRole === "buyer") result.buyer = buyer;
+  if (seller !== null && seller !== undefined && seller.jobId === jobId && seller.anchoredByRole === "seller") result.seller = seller;
   return result;
 }
 
@@ -269,6 +279,52 @@ function perspectiveFlip(o: BundleOutcome): BundleOutcome {
   }
 }
 
+const REPUTATION_PARTY_ROLES: ReadonlySet<AnchoredByRole> = new Set(["buyer", "seller"]);
+const TERMINAL_REPUTATION_OUTCOMES: ReadonlySet<BundleOutcome> = new Set([
+  "completed",
+  "failed-perm",
+  "failed-counterparty",
+  "failed-substrate",
+]);
+
+function hasRequiredTerminalSigners(bundle: AttestationBundle): boolean {
+  if (!TERMINAL_REPUTATION_OUTCOMES.has(bundle.outcome)) return true;
+
+  const required = new Set<ClaimReference>();
+  for (const party of bundle.parties) {
+    if (party.role === "buyer" || party.role === "seller") required.add(party.primaryClaim);
+  }
+  if (required.size < 2) return false;
+
+  const present = new Set(bundle.signatures.map((signature) => signature.party));
+  for (const claim of required) {
+    if (!present.has(claim)) return false;
+  }
+  return true;
+}
+
+// §10.4.3(d)/§10.5.1 guard (ii): two copies of one jobId "canonically diverge" only when they CONTRADICT each other
+// about what happened — NOT when they merely record the same event from each anchorer's perspective. The ONLY field a
+// two-sided pair legitimately records differently per anchorer is the top-level `outcome` (each anchorer states the
+// abort/fault from its own side); the buyer↔seller involution `perspective_flip` (aborted-by-self↔aborted-by-other,
+// failed-perm↔failed-counterparty) maps one frame onto the other. `selfCopy` is already in the scored party's frame, so
+// the counterparty copy AGREES iff `selfCopy.outcome === perspectiveFlip(counterpartyCopy.outcome)`. Comparing raw
+// `outcome` would falsely flag a perspective-consistent abort pair (seller `aborted-by-self` vs buyer `aborted-by-other`)
+// as a dispute and wrongly exclude a clean session. The `phaseSummary` IS in the §10.4.1 shared canonical form (both
+// anchorers record it identically — it is a factual description of each phase, not a per-party fault attribution), so it
+// is compared RAW: any difference in a phase entry's `outcome` or `errorClass` is a genuine contradiction → divergence.
+// Advisory-field skew (finalisedAt, ratingRefs, amendment order) is intentionally NOT compared — it is not a divergence.
+function canonicallyDiverges(selfCopy: AttestationBundle, counterpartyCopy: AttestationBundle): boolean {
+  if (selfCopy.outcome !== perspectiveFlip(counterpartyCopy.outcome)) return true;
+  if (selfCopy.phaseSummary.length !== counterpartyCopy.phaseSummary.length) return true;
+  for (let i = 0; i < selfCopy.phaseSummary.length; i += 1) {
+    const left = selfCopy.phaseSummary[i]!;
+    const right = counterpartyCopy.phaseSummary[i]!;
+    if (left.outcome !== right.outcome || left.errorClass !== right.errorClass) return true;
+  }
+  return false;
+}
+
 export function deriveReputation(
   party: ClaimReference,
   resolvePartyRole: (jobId: string) => AnchoredByRole | undefined,
@@ -279,13 +335,15 @@ export function deriveReputation(
   resolvers: ReputationResolvers = {},
 ): ReputationDerivation {
   // §10.5.1 derive(party, bundles, windowStart, windowEnd). CONTRACT: `bundles` are VERIFIED, consume-produced session
-  // bundles — verification is the §10.4.3 consumption boundary (consumeBundles gates on verifyBundle "pass"); derive()
-  // is the METRIC boundary and does not re-verify. `resolvePartyRole(jobId)` is the EXTERNALLY-KNOWN role the scored
-  // party plays in THAT session (buyer/seller) — the consumer always knows it from the audited session/agreement, exactly
-  // as consumeBundles takes `expected`. It is PER-JOB on purpose: a party can be the buyer in some sessions and the seller
-  // in others within one window, so a single derivation-wide role would misread the off-role sessions. The spec algorithm
-  // reads role_of_party from copies[0].parties, but those labels are producer-signed and UNTRUSTED (§10.4.2/§10.11): a
-  // verified-but-relabelled bundle could otherwise misname the party's role, miss its self_copy, and perspective_flip its
+  // bundles — verification is the §10.4.3 consumption boundary (consumeBundles gates on verifyBundle "pass"). derive() is
+  // still the METRIC boundary, so it re-asserts the §10.5.1 reconciliation guards locally: non-abort copies missing the
+  // buyer/seller signer set are dropped, canonically divergent self/counterparty copies are excluded, and only buyer/seller
+  // anchored copies can contribute a reputation perspective. `resolvePartyRole(jobId)` is the EXTERNALLY-KNOWN role the
+  // scored party plays in THAT session (buyer/seller) — the consumer always knows it from the audited session/agreement,
+  // exactly as consumeBundles takes `expected`. It is PER-JOB on purpose: a party can be the buyer in some sessions and the
+  // seller in others within one window, so a single derivation-wide role would misread the off-role sessions. The spec
+  // algorithm reads role_of_party from copies[0].parties, but those labels are producer-signed and UNTRUSTED (§10.4.2/§10.11):
+  // a verified-but-relabelled bundle could otherwise misname the party's role, miss its self_copy, and perspective_flip its
   // own outcome — inverting abort attribution. So role comes from `resolvePartyRole`, not the bundle. A job whose role the
   // consumer does not supply (undefined) is not in the audited set → skipped. (`anchoredByRole` is trusted here per the
   // §10.4.2 contract that it matches the role-derived anchor address, validated when fetched two-sided; ISA steward-Q.)
@@ -313,29 +371,47 @@ export function deriveReputation(
     // role the scored party plays in THIS job, from the externally-known per-job binding (NOT self-declared parties).
     const role = resolvePartyRole(copies[0]!.jobId);
     if (role === undefined) continue; // job not in the consumer's audited set → not scored.
+    if (!REPUTATION_PARTY_ROLES.has(role)) continue; // §10.5.1 guard (iii): orchestrator reputation is out of scope.
+    const usableCopies = copies.filter((bundle) => hasRequiredTerminalSigners(bundle));
+    if (usableCopies.length === 0) continue; // §10.5.1 guard (i): single-signed non-abort copies are dropped.
     // self_copy = the party's OWN anchored copy for this job, identified by that trusted role.
-    const selfCopy = copies.find((b) => b.anchoredByRole === role);
+    const selfCopy = usableCopies.find((b) => b.anchoredByRole === role);
+    const counterpartyCopy = usableCopies.find((b) => REPUTATION_PARTY_ROLES.has(b.anchoredByRole) && b.anchoredByRole !== role);
+    if (selfCopy !== undefined && counterpartyCopy !== undefined && canonicallyDiverges(selfCopy, counterpartyCopy)) {
+      continue; // §10.5.1 guard (ii): contradictory self/counterparty copies exclude the whole jobId from all metrics.
+    }
     if (selfCopy !== undefined) {
       // The scored party's OWN anchored copy is present → `outcome` is read literally.
       reconciled.push(selfCopy);
       outcomes.push(selfCopy.outcome);
-    } else {
+    } else if (counterpartyCopy !== undefined) {
       // Only a counterparty-anchored copy exists (e.g. §10.11 suppression) → re-interpret via perspective_flip.
-      const cp = copies[0]!;
-      reconciled.push(cp);
-      outcomes.push(perspectiveFlip(cp.outcome));
+      reconciled.push(counterpartyCopy);
+      outcomes.push(perspectiveFlip(counterpartyCopy.outcome));
     }
   }
 
-  const completed = outcomes.filter((o) => o === "completed").length;
-  const failedCounterparty = outcomes.filter((o) => o === "failed-counterparty").length;
-  const failedSubstrate = outcomes.filter((o) => o === "failed-substrate").length;
-  const abortedByOther = outcomes.filter((o) => o === "aborted-by-other").length;
-  const partyFaultDenom = outcomes.length - failedSubstrate;
+  const ordered = reconciled
+    .map((bundle, i) => ({ bundle, outcome: outcomes[i]!, contentHash: bundleHash(bundle) }))
+    .sort((a, b) => a.contentHash.localeCompare(b.contentHash));
+  const orderedBundles = ordered.map((entry) => entry.bundle);
+  const orderedOutcomes = ordered.map((entry) => entry.outcome);
+
+  const completed = orderedOutcomes.filter((o) => o === "completed").length;
+  const failedCounterparty = orderedOutcomes.filter((o) => o === "failed-counterparty").length;
+  const failedSubstrate = orderedOutcomes.filter((o) => o === "failed-substrate").length;
+  const abortedByOther = orderedOutcomes.filter((o) => o === "aborted-by-other").length;
+  const partyFaultDenom = orderedOutcomes.length - failedSubstrate;
   const counterpartyFaultCount = abortedByOther + failedCounterparty;
 
-  const { averageBuyerRating, averageSellerRating } = aggregateRatings(reconciled, party, resolvers.resolveRating);
-  const observedTransactionalVolume = aggregateVolume(reconciled, resolvers.resolveAgreement);
+  const { averageBuyerRating, averageSellerRating } = aggregateRatings(orderedBundles, party, resolvers.resolveRating);
+  const observedTransactionalVolume = aggregateVolume(orderedBundles, resolvers.resolveAgreement);
+  const bundleRefs = ordered
+    .map(({ bundle, contentHash }) => ({
+      kind: "dacs-5-bundle",
+      id: bundle.jobId,
+      contentHash,
+    }));
 
   return {
     derivationVersion: "1",
@@ -351,11 +427,8 @@ export function deriveReputation(
       observedTransactionalVolume,
     },
     computedAt,
-    bundleRefs: reconciled.map((b) => ({
-      kind: "dacs-5-bundle",
-      id: b.jobId,
-      contentHash: bundleHash(b),
-    })),
+    windowingBasis: "finalisedAt",
+    bundleRefs,
   };
 }
 

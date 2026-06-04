@@ -39,7 +39,7 @@
           "attestationRef": {
             "kind": "dacs-4-evidence",
             "id": "evidence-DACS-VERIFY-L3-REP-COMPLETED",
-            "contentHash": "5784706225cc2f805e479af1406c24f6628eae325eb3ddec03b3c99a90cdbc12"
+            "contentHash": "51780a73b93a005ffdce76f5ec9197254b921f6ceda00fd9a0e465ec175c7efc"
           }
         }
       ],
@@ -48,7 +48,7 @@
         {
           "kind": "dacs-4-evidence",
           "id": "evidence-DACS-VERIFY-L3-REP-COMPLETED",
-          "contentHash": "5784706225cc2f805e479af1406c24f6628eae325eb3ddec03b3c99a90cdbc12"
+          "contentHash": "51780a73b93a005ffdce76f5ec9197254b921f6ceda00fd9a0e465ec175c7efc"
         }
       ],
       "recipeRegistryVersion": 1,
@@ -58,12 +58,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "wJYckV8ez5RHAmv69Q1ktUQsorl8lo5DhDfKiUu0jdqxQ1OmULiYvxsjVh1Ws9YfwSyulM9gWw1tRqe6Jks-CA"
+          "value": "LE4DVtspNlf4v1wZG54xoqnlXkHUR96LAf9NVYTLC3Ec60_FthpqHd1T3ozmUNLHT4i8-bdKVkyZ4L0f_AKEAA"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "uPWRPvi-Pgmw3E5KPkSJ4SENeSAHSJrSmfks7xgwOB8j-8MPDqEMr4SR4-pDi_VUTG7CofIm9IDYvJx3T9I2DQ"
+          "value": "nwfDjnv9-6RZPM7rZUtZDERix2_V9wbyFTiIVvOeNBy6uc2TQJGV9kbQTjDLuWfi4DMP4KzdhIPfwv_zJSjnCQ"
         }
       ]
     },
@@ -103,7 +103,7 @@
           "attestationRef": {
             "kind": "dacs-4-evidence",
             "id": "evidence-DACS-VERIFY-L3-REP-COUNTERPARTY",
-            "contentHash": "66c3405bff551d28a7a2feae742d2aab6b6fb88eb6ed6d8096bf705f093d8998"
+            "contentHash": "f8b002c511fdef9f11f3f346d22f601390a5a8ec20ad5cf2ddc5fe7b666d03db"
           }
         }
       ],
@@ -112,7 +112,7 @@
         {
           "kind": "dacs-4-evidence",
           "id": "evidence-DACS-VERIFY-L3-REP-COUNTERPARTY",
-          "contentHash": "66c3405bff551d28a7a2feae742d2aab6b6fb88eb6ed6d8096bf705f093d8998"
+          "contentHash": "f8b002c511fdef9f11f3f346d22f601390a5a8ec20ad5cf2ddc5fe7b666d03db"
         }
       ],
       "recipeRegistryVersion": 1,
@@ -122,12 +122,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "KK8UHaUVlW-LSaTHufTHE8oQdCiED9qbHD6pp2ivpvydhZrQPfgrLZoQtHIh7jtXlyYDSY6Gv0sO7cUN-se0Cg"
+          "value": "1SfMkrGdU7bnC4582JudndHaRDgMJo_qhDZtR7E4RQLZ3V-x2G05ODAzg-29uifnFJJ_jRGPsGzuOOnzQ9FyDw"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "M-xvyA41tmqZbQJX_KWNchLTOMx-Q0YcJA7BOfDimyNnrKqe33evijmAAbgF5S4v4isXcLk55pTY-mt4f_CtAg"
+          "value": "b2y7xUKFu1eDNiiY3BcQCoqqCPJhVmLP4LvQQ3xDVIPESiheiJqe_-Jmc1RDHpLlPxPhQr5btN1QOQdiQiItCw"
         }
       ]
     },
@@ -167,7 +167,7 @@
           "attestationRef": {
             "kind": "dacs-4-evidence",
             "id": "evidence-DACS-VERIFY-L3-REP-SUBSTRATE",
-            "contentHash": "75986c44a418a1d7d08f20fdba32ec531833c96b17c825c465073e8a5badc60d"
+            "contentHash": "a9ead366dbc46e057605ad864e4c6f3f72cbe2d9a9d3410c77ac6d5bc98d9f37"
           }
         }
       ],
@@ -176,7 +176,7 @@
         {
           "kind": "dacs-4-evidence",
           "id": "evidence-DACS-VERIFY-L3-REP-SUBSTRATE",
-          "contentHash": "75986c44a418a1d7d08f20fdba32ec531833c96b17c825c465073e8a5badc60d"
+          "contentHash": "a9ead366dbc46e057605ad864e4c6f3f72cbe2d9a9d3410c77ac6d5bc98d9f37"
         }
       ],
       "recipeRegistryVersion": 1,
@@ -186,12 +186,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "bGpsXy_4_-mLFwYD-B4v_KzfmTg0z0Ur14cuhN84nuwxBIumwQvHdENQfNPzwLBeP1uJ3vzWodjyPspkAPGnBw"
+          "value": "hzE_DmaQJNPV03dFV433D5fbe_N5yjobmuXu5SoVwPsvklEHrE3E7qYZsk1-Yql13p8tfuEF1sRgAzNNuEcrBw"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "ekJc_XTi1k_JRdVM5P9RUZZChsQykhWHHeU3SYzAtQ1eqzpO2-2CCGV0Im1CPLDyrfyGPa6DeAo0aj7qRw8xBA"
+          "value": "nOSaWYCTXZPU1dukBSsUsNv3XOf-jC7EZbf_FR_AJgfSrlStToE1MSgIgJUCgqaPqGsAf52BWhaqUgicNW83AQ"
         }
       ]
     },
@@ -231,7 +231,7 @@
           "attestationRef": {
             "kind": "dacs-4-evidence",
             "id": "evidence-DACS-VERIFY-L3-REP-ABORT-SELF",
-            "contentHash": "fce52a069fa47b5542ce5a28b03df46b043ff89eb3fce250d28a7cc01744e8b2"
+            "contentHash": "0b6e84778c4451a1c6efeb272f3abf46bfb4fa8466d05b830b65b9b159bcadb0"
           }
         }
       ],
@@ -240,7 +240,7 @@
         {
           "kind": "dacs-4-evidence",
           "id": "evidence-DACS-VERIFY-L3-REP-ABORT-SELF",
-          "contentHash": "fce52a069fa47b5542ce5a28b03df46b043ff89eb3fce250d28a7cc01744e8b2"
+          "contentHash": "0b6e84778c4451a1c6efeb272f3abf46bfb4fa8466d05b830b65b9b159bcadb0"
         }
       ],
       "recipeRegistryVersion": 1,
@@ -250,7 +250,7 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "rjkrOz8HoyXv_suaq2BEDoWhnTlTR8vps8M-8xRHsUPNNuBy51M_UYpWd6ZaLxrpd4Dr2lIa88JpDYyMfa20AQ"
+          "value": "A9o3nFv7LS_BKAcksxRywcMIBR0k3_G7dZPiwAac5m8zOdn9n7NzMiQ0qiJa_LkqyjKvqfj10n_DQVRzx00bCQ"
         }
       ]
     },
@@ -290,7 +290,7 @@
           "attestationRef": {
             "kind": "dacs-4-evidence",
             "id": "evidence-DACS-VERIFY-L3-REP-ABORT-OTHER",
-            "contentHash": "442dba5e4bda0fe628447d95484503e1efb5f6ba443f74c876945ae5e2765bfc"
+            "contentHash": "7028479cf1b8b4817d430e6a299852f0cd269845cf42c98356b1d4b725d7ecc9"
           }
         }
       ],
@@ -299,7 +299,7 @@
         {
           "kind": "dacs-4-evidence",
           "id": "evidence-DACS-VERIFY-L3-REP-ABORT-OTHER",
-          "contentHash": "442dba5e4bda0fe628447d95484503e1efb5f6ba443f74c876945ae5e2765bfc"
+          "contentHash": "7028479cf1b8b4817d430e6a299852f0cd269845cf42c98356b1d4b725d7ecc9"
         }
       ],
       "recipeRegistryVersion": 1,
@@ -309,7 +309,7 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "xvzG0ZDdu8CKg-muMMW5zcTL3ki-SYDH38h0-y_Om-DmvUZYhYMN6GErw4UOQ0yQvanzbicj3yL24B_jjh_DBw"
+          "value": "3uMT8yXfhXlTeiEqz0JAVa_oOP8fK231o9StLLK_0WEG0wFr_h5Vd1_d3nq2FjKM7ymt9myGUev0X4Z9Oa1hCA"
         }
       ]
     },
@@ -348,7 +348,7 @@
           "attestationRef": {
             "kind": "dacs-4-evidence",
             "id": "evidence-DACS-VERIFY-L3-REP-OUTSIDE",
-            "contentHash": "8540421ffa9430474dac90aaac8548f166a3f9b8545ad48e4895a83e68210cad"
+            "contentHash": "9e2c5baee39886be0e5cb37e8491d0384f28f7a99eb9729e8b4a7906f0209be4"
           }
         }
       ],
@@ -357,7 +357,7 @@
         {
           "kind": "dacs-4-evidence",
           "id": "evidence-DACS-VERIFY-L3-REP-OUTSIDE",
-          "contentHash": "8540421ffa9430474dac90aaac8548f166a3f9b8545ad48e4895a83e68210cad"
+          "contentHash": "9e2c5baee39886be0e5cb37e8491d0384f28f7a99eb9729e8b4a7906f0209be4"
         }
       ],
       "recipeRegistryVersion": 1,
@@ -367,12 +367,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "fn8hiu7AqmTkGwhar6IVmcHtd-Xie27gYXNko8nTod4xtMGUb4inBRhLgmtmsUCD6Isc-vpCBH6fJYEPSFROBA"
+          "value": "z-GxgCz8AgZMy9_uE96oiW66gUalaDuy182AGtuGaz1XaEi0ro-jYegxJ7YLTeKlJbzsz2eXn6kmZM2m1LbtDw"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "zuAFyNVYswo31BJ0IHE4GjLuPdbAwVs81MiyWHAC-9qxyB91xnPZpURgy47rretKkQgz5Nf2hiovYj8SF5jLBQ"
+          "value": "skrvL0hnDuQIisAzZSh3hkSdaIIJ_KGo5A4JBdKy3dMh7ym7lskWbl6i33El9i6ooVPuZGs4pBYK59TcXEjjCg"
         }
       ]
     }

@@ -192,22 +192,10 @@ test("ISC-30: no-fault remedy is valid", () => {
   expect(validateRemedy({ kind: "no-fault" }).ok).toBe(true);
 });
 
-test("ISC-42: correction-ordered remedy (HTLC-9 seam) requires outcome=failure + reason + revealTxRef", () => {
-  expect(validateRemedy({ kind: "correction-ordered", correctedOutcome: "failure", reason: "dest-revealed-source-unclaimed", revealTxRef: "polygon-amoy:0xreveal" }).ok).toBe(true);
-  // MUST NOT close as a refund/success — that double-pays the payee already paid on the dest chain (§9.8)
-  expect(validateRemedy({ kind: "correction-ordered", correctedOutcome: "success", reason: "x", revealTxRef: "y" } as unknown as RemedyDecision).ok).toBe(false);
-  // missing htlc-reveal txRef rejected
-  expect(validateRemedy({ kind: "correction-ordered", correctedOutcome: "failure", reason: "dest-revealed-source-unclaimed", revealTxRef: "" }).ok).toBe(false);
-});
-
-test("ISC-43: correction-ordered reweight voids the contribution (HTLC-9 failure), prior preserved", () => {
-  const record = makeRecord(buyer);
-  const corr = makeOutcome(record, arbitrator, { kind: "correction-ordered", correctedOutcome: "failure", reason: "dest-revealed-source-unclaimed", revealTxRef: "polygon-amoy:0xreveal" });
-  const re = reputationReweight({ jobId, weight: 1 }, corr);
-  expect(re.effectiveWeight).toBe(0);
-  expect(re.priorWeight).toBe(1);
-  expect(re.adjudicated).toBe(true);
-});
+// NOTE: ISC-42 / ISC-43 (the `correction-ordered` remedy + reweight tests) were
+// REMOVED — the remedy itself was removed to track Round-4 R4-A / Round-5 R5-3
+// (HTLC-9 asymmetric settlement now resolves at the §10.3.1 ST-8 settlement
+// layer, not via a DACS-X correction amendment). See src/dacsx/types.ts.
 
 // ── ISC-31: reputation reweight (supersede-with-provenance) ───────────────────
 test("ISC-31: a refund voids the disputed contribution and records provenance", () => {

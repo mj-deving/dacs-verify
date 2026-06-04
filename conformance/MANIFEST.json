@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "156 vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2) + 12 governance (§14.7 GOV-1..3); byte-stable and reference-verifier-accepted.",
+    "golden": "185 vectors — 7 canonicalize + 5 decimal + 5 signing + 15 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 36 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -206,6 +206,84 @@
       "want": false
     },
     {
+      "id": "dacs1-freshness-fail-closed",
+      "area": "dacs1",
+      "spec": "§6.3.2/§6.3.3",
+      "summary": "freshness Option A: absent timestamps and expired expiresAt fail before maxAge; expiresAt-only can pass unless maxAge needs issuedAt",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "absentBoth": false,
+        "expired": false,
+        "expiresOnly": true,
+        "expiresOnlyMaxAge": false,
+        "stalePresentedByPrimary": false
+      }
+    },
+    {
+      "id": "identity-tier-institutional",
+      "area": "dacs1",
+      "spec": "§6.3.2.1",
+      "summary": "IT-1: verified-and-fresh authority-issued claim derives institutional",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "institutional"
+    },
+    {
+      "id": "identity-tier-verified",
+      "area": "dacs1",
+      "spec": "§6.3.2.1",
+      "summary": "IT-1: verified-and-fresh non-authority claim derives verified",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "verified"
+    },
+    {
+      "id": "identity-tier-raw-key",
+      "area": "dacs1",
+      "spec": "§6.3.2.1",
+      "summary": "IT-1: raw key with no verifiedBy derives self-declared",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "self-declared"
+    },
+    {
+      "id": "identity-tier-self-asserted-ignored",
+      "area": "dacs1",
+      "spec": "§6.3.2.1",
+      "summary": "IT-2: self-asserted identityTier is ignored and recomputed",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "self-declared"
+    },
+    {
+      "id": "identity-tier-highest-wins",
+      "area": "dacs1",
+      "spec": "§6.3.2.1",
+      "summary": "IT-3: verified institutional claim wins over verified non-authority claim",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "institutional"
+    },
+    {
+      "id": "identity-tier-stale-not-elevated",
+      "area": "dacs1",
+      "spec": "§6.3.2.1",
+      "summary": "IT-3: stale verifiedBy does not elevate an authority-issued claim",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "self-declared"
+    },
+    {
+      "id": "identity-tier-forged-unresolved",
+      "area": "dacs1",
+      "spec": "§6.3.2.1",
+      "summary": "IT-3: malformed or unresolved verifiedBy does not elevate an authority-issued claim",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "self-declared"
+    },
+    {
       "id": "dacs1-listing-intake-ok",
       "area": "dacs1",
       "spec": "§6.3.4",
@@ -249,6 +327,27 @@
         "shape64": true,
         "notLen40": true
       }
+    },
+    {
+      "id": "cf4-encode-delimiters",
+      "area": "addressing",
+      "spec": "§6.3.4 CF-4",
+      "summary": "reserved delimiters (: ? & = %) are percent-encoded with uppercase hex, and no other bytes are guessed",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "encoded": "cci-xm%3Aevm%3Amainnet%3A0x1234%3Fx%3D1%26y%3D100%25",
+        "decoded": "cci-xm:evm:mainnet:0x1234?x=1&y=100%"
+      }
+    },
+    {
+      "id": "cf4-dacs1-listing-address",
+      "area": "addressing",
+      "spec": "§6.3.4 CF-4",
+      "summary": "listing logical address encodes sellerPrimaryClaim + listingId variable segments before assembly",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "dacs1:cci-xm%3Aevm%3Amainnet%3A0x1234:rfq%3Alot%3Fx%3D1:v3"
     },
     {
       "id": "vet-cm4-classify",
@@ -301,6 +400,24 @@
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": "dacs2:job-abc:lei:984500ABCDEF12345678:v3"
+    },
+    {
+      "id": "cf4-dacs2-attestation-address",
+      "area": "vet",
+      "spec": "§6.3.4 CF-4",
+      "summary": "dacs2 attestation address encodes a colon-bearing identifier segment",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "dacs2:job-abc:cci-xm:evm%3Amainnet%3A0x1234:v3"
+    },
+    {
+      "id": "cf4-dacs2-composite-address",
+      "area": "vet",
+      "spec": "§6.3.4 CF-4",
+      "summary": "dacs2 composite address encodes a colon-bearing evaluatedParty segment",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "dacs2:composite:job-abc:cci-xm%3Aevm%3Amainnet%3A0x1234"
     },
     {
       "id": "vet-vpr1-transient-retry",
@@ -427,6 +544,68 @@
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": false
+    },
+    {
+      "id": "vet-freshness-fail-closed",
+      "area": "vet",
+      "spec": "§6.3.2/§6.3.3",
+      "summary": "vetFindClaim applies the same freshness pre-gate before maxAge after resolving verifiedBy decision",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "absentBoth": false,
+        "expired": false,
+        "expiresOnly": true,
+        "expiresOnlyMaxAge": false,
+        "stalePresentedByPrimary": false
+      }
+    },
+    {
+      "id": "vet-oneof-error-over-fail",
+      "area": "vet",
+      "spec": "§7.7.1",
+      "summary": "oneOf within-group precedence: error > indeterminate > fail",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "decision": "error",
+        "errorClass": "transient"
+      }
+    },
+    {
+      "id": "vet-oneof-indeterminate-over-fail",
+      "area": "vet",
+      "spec": "§7.7.1",
+      "summary": "oneOf within-group precedence: indeterminate > fail when no error/pass is present",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "decision": "indeterminate"
+      }
+    },
+    {
+      "id": "vet-cross-accumulator-fail-over-error",
+      "area": "vet",
+      "spec": "§7.7.1",
+      "summary": "cross-accumulator precedence across required + oneOf: fail > error > indeterminate",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "decision": "fail",
+        "errorClass": "permanent"
+      }
+    },
+    {
+      "id": "vet-counterparty-malformed-attribution",
+      "area": "vet",
+      "spec": "§7.8.2",
+      "summary": "VPC-4/R8-E: counterparty-malformed oneOf alternative keeps decision=error but attributes phaseSummary.errorClass=counterparty",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "decision": "error",
+        "errorClass": "counterparty"
+      }
     },
     {
       "id": "neg-band-inclusive",
@@ -963,6 +1142,18 @@
       "want": "fail"
     },
     {
+      "id": "cf4-dacs4-payment-address",
+      "area": "settlement",
+      "spec": "§6.3.4 CF-4",
+      "summary": "dacs4 payment evidence address encodes a colon-bearing railId while phaseIndex stays structural",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "address": "dacs4:payment:DACS-VERIFY-SETTLE-0001:evm-erc20%3A1%3AUSDC:0",
+        "decision": "pass"
+      }
+    },
+    {
       "id": "settlement-attestationref-hash-mismatch-fail",
       "area": "settlement",
       "spec": "§9.5.1 PC-3",
@@ -1143,6 +1334,51 @@
       "want": "fail"
     },
     {
+      "id": "settlement-htlc-finality-params-pass",
+      "area": "settlement",
+      "spec": "§9.5.4 HTLC-7",
+      "summary": "HTLC rail pins timelockSourceSec/timelockDestSec/sourceFinalitySec/safetyWindowSec and satisfies source-margin inequality → PASS",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "pass"
+    },
+    {
+      "id": "settlement-htlc-missing-source-finality-fail",
+      "area": "settlement",
+      "spec": "§9.5.4 HTLC-7",
+      "summary": "HTLC rail missing required sourceFinalitySec → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-htlc-missing-safety-window-fail",
+      "area": "settlement",
+      "spec": "§9.5.4 HTLC-7",
+      "summary": "HTLC rail missing required safetyWindowSec → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-htlc-insufficient-margin-fail",
+      "area": "settlement",
+      "spec": "§9.5.4 HTLC-7",
+      "summary": "HTLC source timelock not greater than dest timelock + source finality + safety → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-cross-chain-anchor-pending-pass",
+      "area": "settlement",
+      "spec": "§9.5.1 PC-7",
+      "summary": "cross-chain payment with irreversible foreign-chain value movement may return ok:true + txRefs while SR-2 anchoring is pending",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "pass"
+    },
+    {
       "id": "settlement-cross-chainid-matching-kind-pass",
       "area": "settlement",
       "spec": "§9.4.3 RD-5",
@@ -1180,6 +1416,15 @@
         true,
         true
       ]
+    },
+    {
+      "id": "cf4-dacs5-rating-address",
+      "area": "verify",
+      "spec": "§6.3.4 CF-4",
+      "summary": "dacs5 rating address encodes a colon-bearing rater ClaimReference",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "dacs5:rating:job-abc:cci-xm%3Aevm%3Amainnet%3A0x1234"
     },
     {
       "id": "verify-lookup-both",
@@ -1253,7 +1498,7 @@
         "verdict": "one-sided",
         "buyerDecision": "pass",
         "buyerOutcome": "aborted-by-other",
-        "buyerHash": "ba7782e37f859645b11a4c432e5ca045d2426d4daf40d726c815f1f49098cb9c",
+        "buyerHash": "c0f2f5fd9403f472478e18f5a8ebcd26c7769c57bcd9adbd70ce7895f8c2deb9",
         "abortedBySelfRole": "seller",
         "abortedByOtherRole": "buyer"
       }
@@ -1350,6 +1595,18 @@
       "area": "verify",
       "spec": "§10.3.1 ST-8",
       "summary": "settle-asymmetric resolves forward: → settle-completed (htlc-claim in window) or → settle-failed (window expiry)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        true,
+        true
+      ]
+    },
+    {
+      "id": "verify-st-asymmetric-pause-resume-legal",
+      "area": "verify",
+      "spec": "§10.3.1 ST-8/R6-6",
+      "summary": "settle-asymmetric may pause while anchoring the :resolved record and resume to settle-asymmetric",
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": [
@@ -1474,6 +1731,26 @@
       "want": 1
     },
     {
+      "id": "verify-reputation-determinism-receipt",
+      "area": "verify",
+      "spec": "§10.5.3",
+      "summary": "windowingBasis is recorded and bundleRefs are ascending contentHash; re-derivation from bundleRefs reproduces metrics + count",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "windowingBasis": "finalisedAt",
+        "sortedBundleRefs": true,
+        "rerunMetrics": {
+          "completionRate": 0.25,
+          "counterpartyDisputeRate": 0.5,
+          "averageBuyerRating": null,
+          "averageSellerRating": null,
+          "observedTransactionalVolume": []
+        },
+        "rerunBundleCount": 5
+      }
+    },
+    {
       "id": "verify-reputation-ratings-volume-l3-null",
       "area": "verify",
       "spec": "§10.5.1",
@@ -1533,6 +1810,55 @@
         "bundleCount": 1,
         "completionRate": 0,
         "counterpartyDisputeRate": 0
+      }
+    },
+    {
+      "id": "verify-reputation-single-signed-non-abort-dropped",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "guard (i): a single-signed seller-anchored failed-counterparty copy is dropped before perspective_flip can depress the buyer's score",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "verifyBundleDecision": "fail",
+        "bundleCount": 1,
+        "completionRate": 1,
+        "counterpartyDisputeRate": 0,
+        "bundleRefs": [
+          "DACS-VERIFY-L3-REP-COMPLETED"
+        ]
+      }
+    },
+    {
+      "id": "verify-reputation-divergence-excluded",
+      "area": "verify",
+      "spec": "§10.5.1/§10.4.3(d)",
+      "summary": "guard (ii): contradictory self/counterparty copies are excluded from BOTH numerator and party_fault_denom",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 1,
+        "completionRate": 1,
+        "counterpartyDisputeRate": 0,
+        "bundleRefs": [
+          "DACS-VERIFY-L3-REP-COMPLETED"
+        ]
+      }
+    },
+    {
+      "id": "verify-reputation-orchestrator-ignored",
+      "area": "verify",
+      "spec": "§10.5.1",
+      "summary": "guard (iii): orchestrator-anchored copies are evidence-only and never chosen as the counterparty perspective",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleCount": 1,
+        "completionRate": 0,
+        "counterpartyDisputeRate": 0,
+        "bundleRefs": [
+          "DACS-VERIFY-L3-RECONCILE"
+        ]
       }
     },
     {

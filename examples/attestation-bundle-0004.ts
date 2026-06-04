@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { canonicalize } from "../src/canonicalize.ts";
 import { sha256Hex } from "../src/hash.ts";
 import { DOMAIN_SEPARATOR_REGISTRY } from "../src/signing.ts";
-import { bundleHash, type AttestationBundle, type AttestationRef } from "../src/dacs5/index.ts";
+import { bundleHash, BUNDLE_SIGNED_SCOPE_OMIT, type AttestationBundle, type AttestationRef } from "../src/dacs5/index.ts";
 import { keypairFromSeed, signArtifact } from "./issuer-kit.ts";
 
 const BUYER_SEED = "a1".repeat(32);
@@ -63,6 +63,7 @@ export function buildAttestationBundle0004(): {
   const settlementRef = ref("dacs-4-evidence", "settlement-dacs-verify-0004", {
     evidenceVersion: "1",
     jobId: ATTESTATION_BUNDLE_0004_JOB_ID,
+    phaseIndex: 0,
     kind: "settlement",
     outcome: "ok",
     txHash: "demos-testnet:tx-dacs-verify-0004-settle",
@@ -113,12 +114,12 @@ export function buildAttestationBundle0004(): {
       {
         party: ATTESTATION_BUNDLE_0004_BUYER_CLAIM,
         algorithm: "ed25519",
-        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, buyer.privateKey, ["signatures"]),
+        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, buyer.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
       },
       {
         party: ATTESTATION_BUNDLE_0004_SELLER_CLAIM,
         algorithm: "ed25519",
-        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, seller.privateKey, ["signatures"]),
+        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, seller.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
       },
     ],
   };
@@ -175,6 +176,7 @@ export function buildAttestationBundle0004Seller(): {
   const settlementRef = ref("dacs-4-evidence", "settlement-dacs-verify-0004-seller", {
     evidenceVersion: "1",
     jobId: ATTESTATION_BUNDLE_0004_JOB_ID,
+    phaseIndex: 0,
     kind: "settlement",
     outcome: "fail",
     errorClass: "counterparty",
@@ -228,12 +230,12 @@ export function buildAttestationBundle0004Seller(): {
       {
         party: ATTESTATION_BUNDLE_0004_BUYER_CLAIM,
         algorithm: "ed25519",
-        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, buyer.privateKey, ["signatures"]),
+        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, buyer.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
       },
       {
         party: ATTESTATION_BUNDLE_0004_SELLER_CLAIM,
         algorithm: "ed25519",
-        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, seller.privateKey, ["signatures"]),
+        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, seller.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
       },
     ],
   };
@@ -295,6 +297,7 @@ export function buildAttestationBundleHtlc9(): {
   const settlementRef = ref("dacs-4-evidence", "settlement-dacs-verify-htlc9", {
     evidenceVersion: "1",
     jobId: ATTESTATION_BUNDLE_HTLC9_JOB_ID,
+    phaseIndex: 0,
     kind: "cross-chain-htlc-settlement",
     outcome: "fail",
     errorClass: "settlement-atomicity",
@@ -348,12 +351,12 @@ export function buildAttestationBundleHtlc9(): {
       {
         party: ATTESTATION_BUNDLE_0004_BUYER_CLAIM,
         algorithm: "ed25519",
-        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, buyer.privateKey, ["signatures"]),
+        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, buyer.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
       },
       {
         party: ATTESTATION_BUNDLE_0004_SELLER_CLAIM,
         algorithm: "ed25519",
-        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, seller.privateKey, ["signatures"]),
+        value: signArtifact(separator, signingDoc as unknown as Record<string, unknown>, seller.privateKey, [...BUNDLE_SIGNED_SCOPE_OMIT]),
       },
     ],
   };

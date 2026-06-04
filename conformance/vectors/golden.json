@@ -10,9 +10,58 @@
     "signature": "fppio4yI01PfnS1TVphR4g1PYsEAdc8Jt1jhmK96yhWfX7vs41z3WuOacKuJhl0NfgzdLOaOh9VcsA4B3rhDBA",
     "publicKeyHex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
   },
+  "identityTier": {
+    "status": "golden — reference-verifier-accepted + byte-stable",
+    "fixtureDir": "conformance/fixtures/identity",
+    "cases": [
+      {
+        "id": "identity-tier-institutional",
+        "fixture": "conformance/fixtures/identity/identity-tier-institutional.json",
+        "derived": "institutional",
+        "expected": "institutional"
+      },
+      {
+        "id": "identity-tier-verified",
+        "fixture": "conformance/fixtures/identity/identity-tier-verified.json",
+        "derived": "verified",
+        "expected": "verified"
+      },
+      {
+        "id": "identity-tier-raw-key",
+        "derived": "self-declared",
+        "expected": "self-declared"
+      },
+      {
+        "id": "identity-tier-self-asserted-ignored",
+        "fixture": "conformance/fixtures/identity/identity-tier-self-declared.json",
+        "derived": "self-declared",
+        "expected": "self-declared"
+      },
+      {
+        "id": "identity-tier-highest-wins",
+        "derived": "institutional",
+        "expected": "institutional"
+      },
+      {
+        "id": "identity-tier-stale-not-elevated",
+        "derived": "self-declared",
+        "expected": "self-declared"
+      },
+      {
+        "id": "identity-tier-forged-unresolved",
+        "derived": "self-declared",
+        "expected": "self-declared"
+      }
+    ]
+  },
   "addressing": {
-    "logical": "dacs1:lei:984500ABCDEF12345678:fx-rfq-eur-usd:v1",
-    "native": "stor-ac8d9a32ced4223d0022fba37beb05754c7c695e1599175178a543ff72302f96"
+    "logical": "dacs1:lei%3A984500ABCDEF12345678:fx-rfq-eur-usd:v1",
+    "native": "stor-f71ce54389db7a30c5b125af916edb87ee87e8404eb3204bcf07041e2111b0f2",
+    "cf4": {
+      "input": "cci-xm:evm:mainnet:0x1234?x=1&y=100%",
+      "encoded": "cci-xm%3Aevm%3Amainnet%3A0x1234%3Fx%3D1%26y%3D100%25",
+      "colonListing": "dacs1:cci-xm%3Aevm%3Amainnet%3A0x1234:rfq%3Alot%3Fx%3D1:v3"
+    }
   },
   "vet": {
     "decisions": [
@@ -22,7 +71,14 @@
       "error"
     ],
     "address": "dacs2:job-abc:lei:984500ABCDEF12345678:v3",
-    "retryBudgetDefault": 3
+    "cf4Address": "dacs2:job-abc:cci-xm:evm%3Amainnet%3A0x1234:v3",
+    "cf4Composite": "dacs2:composite:job-abc:cci-xm%3Aevm%3Amainnet%3A0x1234",
+    "retryBudgetDefault": 3,
+    "aggregation": {
+      "oneOfPrecedence": "error > indeterminate > fail",
+      "crossAccumulatorPrecedence": "fail > error > indeterminate",
+      "counterpartyMalformedErrorClass": "counterparty"
+    }
   },
   "negotiate": {
     "deliverableHash": "d5e3f3c6aa8842293f84fede12db561fb2625621c9c15eaa654c318d1ad66599",
@@ -50,7 +106,7 @@
     "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
     "fixture": "conformance/fixtures/attestation-bundle-0004.json",
     "jobId": "DACS-VERIFY-0004",
-    "bundleHash": "98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e",
+    "bundleHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba",
     "decisions": {
       "pass": "pass",
       "requiredSignerReject": "fail",
@@ -67,14 +123,14 @@
     "divergentSellerFixture": "conformance/fixtures/attestation-bundle-0004-seller.json",
     "divergentSeller": {
       "jobId": "DACS-VERIFY-0004",
-      "bundleHash": "d6c161bd190d69acc6104279b6f53cc0d8e3de405cfc19578605cf49da5631a5",
+      "bundleHash": "83b180d7a2a00109e96fe099df6c1ef14271b5c0d43c24da78051238cee580bd",
       "decision": "pass",
       "outcome": "failed-counterparty"
     },
     "htlc9Fixture": "conformance/fixtures/attestation-bundle-htlc9.json",
     "htlc9": {
       "jobId": "DACS-VERIFY-HTLC9",
-      "bundleHash": "745f8ecf1aed66dda28560974ff43e934dae83ee44fc91d651ce07ea29bb6019",
+      "bundleHash": "e62e9c166fc4954c177c194367ac9c229d4043a775ce04f353d5aae2bc53657e",
       "decision": "pass",
       "settlementPhase": {
         "kind": "pay-cross-chain-htlc",
@@ -88,21 +144,21 @@
     "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
     "bundleRef": {
       "jobId": "DACS-VERIFY-0004",
-      "bundleHash": "98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e"
+      "bundleHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba"
     },
     "divergentBundleRefs": [
       {
         "jobId": "DACS-VERIFY-0004",
-        "bundleHash": "98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e"
+        "bundleHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba"
       },
       {
         "jobId": "DACS-VERIFY-0004",
-        "bundleHash": "d6c161bd190d69acc6104279b6f53cc0d8e3de405cfc19578605cf49da5631a5"
+        "bundleHash": "83b180d7a2a00109e96fe099df6c1ef14271b5c0d43c24da78051238cee580bd"
       }
     ],
     "htlc9BundleRef": {
       "jobId": "DACS-VERIFY-HTLC9",
-      "bundleHash": "745f8ecf1aed66dda28560974ff43e934dae83ee44fc91d651ce07ea29bb6019"
+      "bundleHash": "e62e9c166fc4954c177c194367ac9c229d4043a775ce04f353d5aae2bc53657e"
     },
     "seeds": {
       "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
@@ -117,25 +173,24 @@
       "ruleSwap": "fail",
       "wrongOutcomeKey": "fail",
       "nonCanonicalAmount": "fail",
-      "unknownBundle": "fail",
-      "htlc9Correction": "pass"
+      "unknownBundle": "fail"
     },
-    "inputs": "constructed deterministically in conformance/run.ts from the seeds above; divergent-bundle refs point to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json; HTLC-9 correction ref points to conformance/fixtures/attestation-bundle-htlc9.json"
+    "inputs": "constructed deterministically in conformance/run.ts from the seeds above; divergent-bundle refs point to conformance/fixtures/attestation-bundle-0004.json + attestation-bundle-0004-seller.json; HTLC-9 bundle ref points to conformance/fixtures/attestation-bundle-htlc9.json"
   },
   "disclosure": {
     "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
     "bundleRef": {
       "jobId": "DACS-VERIFY-0004",
-      "bundleHash": "98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e"
+      "bundleHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba"
     },
     "divergentBundleRefs": [
       {
         "jobId": "DACS-VERIFY-0004",
-        "bundleHash": "98d7b565da2cbb6e60048b51cb87450484d78d1bd7eb46c96b5fe6fe4ac2dd5e"
+        "bundleHash": "9e5ea58d198b459a2929d38019807c465ce9988dcb89c847cce8e80210df39ba"
       },
       {
         "jobId": "DACS-VERIFY-0004",
-        "bundleHash": "d6c161bd190d69acc6104279b6f53cc0d8e3de405cfc19578605cf49da5631a5"
+        "bundleHash": "83b180d7a2a00109e96fe099df6c1ef14271b5c0d43c24da78051238cee580bd"
       }
     ],
     "seeds": {
@@ -164,8 +219,8 @@
     "deliveryFixture": "conformance/fixtures/settlement-evidence-delivery-success.json",
     "jobId": "DACS-VERIFY-SETTLE-0001",
     "deliveryJobId": "DACS-VERIFY-DELIVER-0001",
-    "evidenceHash": "b2cb07015441eb4f378361deb8f632dbd325b34fb314a236c136192e3bec2cee",
-    "deliveryEvidenceHash": "89b28b232c5217b3828d028c0d2c28fcdce535972e84010f75298eacee155efa",
+    "evidenceHash": "665d4604f4002a3a1f98ca4e719ecbd0deca9b67b827364cf89602f30de52ca2",
+    "deliveryEvidenceHash": "0b7e2e24b666de463059d9852a3c53558ff1ca961033072e87e516db2b0d979d",
     "decisions": {
       "paymentPass": "pass",
       "deliveryPass": "pass",
@@ -195,6 +250,11 @@
       "underpaymentVsAgreement": "fail",
       "incoherentRailTypeHandler": "fail",
       "railNetworkMismatch": "fail",
+      "htlcFinalityParams": "pass",
+      "htlcMissingSourceFinality": "fail",
+      "htlcMissingSafetyWindow": "fail",
+      "htlcInsufficientMargin": "fail",
+      "crossChainAnchorPending": "pass",
       "crossChainIdMatchingKindPass": "pass",
       "deliveryExtraPaymentFieldPass": "pass"
     },
@@ -243,6 +303,7 @@
     "reputation": {
       "windowStart": 1780050000000,
       "windowEnd": 1780050010000,
+      "windowingBasis": "finalisedAt",
       "computedAt": 1780050020000,
       "bundleCount": 5,
       "metrics": {
@@ -251,7 +312,34 @@
         "averageBuyerRating": null,
         "averageSellerRating": null,
         "observedTransactionalVolume": []
-      }
+      },
+      "bundleRefs": [
+        {
+          "kind": "dacs-5-bundle",
+          "id": "DACS-VERIFY-L3-REP-ABORT-SELF",
+          "contentHash": "0ad30f585dbe75b3c21f8e58c25f53a40c571cf0faa2485894a14b4b48596c97"
+        },
+        {
+          "kind": "dacs-5-bundle",
+          "id": "DACS-VERIFY-L3-REP-ABORT-OTHER",
+          "contentHash": "129ac7c0fb9bb911ecde0ef4b7520603ff30d505c526c4b0f2e645580a0367d9"
+        },
+        {
+          "kind": "dacs-5-bundle",
+          "id": "DACS-VERIFY-L3-REP-COMPLETED",
+          "contentHash": "2837e68d32d66fe164bc1fc2606043910e8460af684f56381dc86f09ff89051c"
+        },
+        {
+          "kind": "dacs-5-bundle",
+          "id": "DACS-VERIFY-L3-REP-SUBSTRATE",
+          "contentHash": "63ac0e92f864dbe0b2a18c7719a4a21d2d365ab01f8bdd43d6910d05c259c48e"
+        },
+        {
+          "kind": "dacs-5-bundle",
+          "id": "DACS-VERIFY-L3-REP-COUNTERPARTY",
+          "contentHash": "b2b4105c96cee924a6b7aa2507cf130536d5a6074bd9ecd135ab033d580bc48b"
+        }
+      ]
     },
     "consistencyChecks": {
       "crossSessionJobIdIgnored": "absent",

@@ -121,8 +121,17 @@ const PHASE_OUTCOMES: ReadonlySet<string> = new Set(["ok", "fail"]);
 const ERROR_CLASSES: ReadonlySet<string> = new Set(["permanent", "transient", "counterparty", "substrate", "settlement-atomicity"]);
 const SIGNATURE_ALGORITHMS: ReadonlySet<string> = new Set(["ed25519", "ecdsa-secp256k1", "sr1-aggregate"]);
 
+// §10.4.1 (R5-1, b26a420): the fields omitted from the bundle's hashed/signed canonical form. `signatures` is the
+// signature envelope; `anchoredByRole` is the per-copy field (buyer/seller/orchestrator) excluded since R5-1 so the
+// two-sided copies stay canonically EQUAL in the happy path (they differ only in that unhashed field) — fixing R4-B's
+// self-inflicted bug where the hashed field forced every happy-path session to the §10.4.3(d) "disputed" branch. This is
+// a recognised, specified omission, NOT a SIG-5 silent strip; integrity of the unhashed field is the §10.4.2 anchor-address
+// cross-check (see twoSidedLookup), not the signature. SINGLE SOURCE — every bundle signer AND the verifier MUST omit this
+// exact set or signatures won't round-trip (the R5-1 multi-site drift trap).
+export const BUNDLE_SIGNED_SCOPE_OMIT: readonly string[] = ["signatures", "anchoredByRole"];
+
 export function bundleHash(bundle: AttestationBundle): string {
-  return sha256Hex(canonicalize(withoutSignature(bundle as unknown as Record<string, unknown>, "signatures")));
+  return sha256Hex(canonicalize(withoutSignature(bundle as unknown as Record<string, unknown>, ...BUNDLE_SIGNED_SCOPE_OMIT)));
 }
 
 export function verifyBundle(bundle: AttestationBundle, resolveKey: BundleKeyResolver): BundleDecision {
@@ -164,7 +173,8 @@ export function verifyBundle(bundle: AttestationBundle, resolveKey: BundleKeyRes
         doc: bundle as unknown as Record<string, unknown>,
         publicKeyRaw,
         signatureRaw,
-        signatureFields: ["signatures"],
+        // §10.4.1 (R5-1): the signed scope MUST equal bundleHash()'s canonical form (so result.artifactHash === computedHash).
+        signatureFields: [...BUNDLE_SIGNED_SCOPE_OMIT],
       });
       if (result.artifactHash !== computedHash) return "error";
       if (!result.ok) return "fail";

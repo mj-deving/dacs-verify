@@ -1,11 +1,15 @@
 import {
+  claimFreshnessAndMaxAgePasses,
+  claimFreshnessPasses,
   schemeOf,
   type BundleClaim,
   type BundleRequirement,
   type ClaimRequirement,
+  type ClaimReference,
   type IdentityBundle,
   type MatchResult,
 } from "../dacs1.ts";
+import { cf4Encode } from "../logical-address.ts";
 
 // DACS-2 (Vet) — the verifier-side conformance surface of §7.4/§7.5/§7.6 and the
 // §6.3.3 match algorithm. This module covers the read-only checks the spec's §14.2
@@ -32,6 +36,7 @@ export interface VerifyResult {
   recipeVersion?: number;
   retryClass?: "transient" | "permanent";
   retryOnIndeterminate?: boolean;
+  errorClass?: "permanent" | "transient" | "counterparty";
   data?: Record<string, unknown>;
 }
 
@@ -59,11 +64,14 @@ export function validateMethodContract(vr: Partial<VerifyResult>, expectedMethod
 /**
  * CM-2: the public anchor address for a DACS-2 attestation —
  * `dacs2:{jobId}:{scheme}:{identifier}:v{recipeVersion}` (§7.3.1). The scheme is
- * lowercased per CF-2 canonical claim form; the identifier is carried verbatim
- * (NFC canonicalisation of the identifier is the caller's responsibility).
+ * lowercased per CF-2 canonical claim form; the identifier is CF-4 encoded.
  */
 export function vetAttestationAddress(jobId: string, scheme: string, identifier: string, recipeVersion: number): string {
-  return `dacs2:${jobId}:${scheme.toLowerCase()}:${identifier}:v${recipeVersion}`;
+  return `dacs2:${jobId}:${scheme.toLowerCase()}:${cf4Encode(identifier)}:v${recipeVersion}`;
+}
+
+export function vetCompositeAddress(jobId: string, evaluatedParty: ClaimReference): string {
+  return `dacs2:composite:${jobId}:${cf4Encode(evaluatedParty)}`;
 }
 
 // §7.6.1 — retry budget default (VP-R1).
@@ -125,17 +133,106 @@ export function vetFindClaim(
   for (const c of bundle.claims) {
     if (schemeOf(c.ref) !== cr.scheme.toLowerCase()) continue;
     if (cr.verificationRequired && !isVerifiedPass(c, resolve)) continue;
-    if (cr.maxAge !== undefined && c.issuedAt !== undefined && now - c.issuedAt > cr.maxAge * 1000) continue;
+    if (!claimFreshnessPasses(c, now)) continue;
+    if (cr.maxAge !== undefined) {
+      if (c.issuedAt === undefined) continue;
+      if (now - c.issuedAt > cr.maxAge * 1000) continue;
+    }
     return c;
   }
   return null;
+}
+
+export type VetAggregationResult = {
+  decision: VetDecision;
+  errorClass?: "permanent" | "transient" | "counterparty";
+};
+
+export function evaluateVetRequirement(
+  bundle: IdentityBundle,
+  requirement: BundleRequirement,
+  resolve: VerifyResultResolver,
+  now: number,
+): VetAggregationResult {
+  const parts: VetAggregationResult[] = [];
+  for (const cr of requirement.required) {
+    parts.push(classifyClaimRequirement(bundle, cr, resolve, now));
+  }
+  for (const group of requirement.oneOf ?? []) {
+    parts.push(classifyOneOfGroup(bundle, group, resolve, now));
+  }
+  return classifyAcrossAccumulators(parts);
+}
+
+function classifyClaimRequirement(
+  bundle: IdentityBundle,
+  cr: ClaimRequirement,
+  resolve: VerifyResultResolver,
+  now: number,
+): VetAggregationResult {
+  const outcomes: VetAggregationResult[] = [];
+  for (const claim of bundle.claims) {
+    if (schemeOf(claim.ref) !== cr.scheme.toLowerCase()) continue;
+    if (!claimFreshnessPasses(claim, now)) continue;
+    if (cr.maxAge !== undefined) {
+      if (claim.issuedAt === undefined) continue;
+      if (now - claim.issuedAt > cr.maxAge * 1000) continue;
+    }
+    if (!cr.verificationRequired) return { decision: "pass" };
+    if (!claim.verifiedBy) {
+      outcomes.push({ decision: "fail", errorClass: "permanent" });
+      continue;
+    }
+    const vr = resolve(claim.verifiedBy);
+    if (vr === null) {
+      outcomes.push({ decision: "indeterminate" });
+      continue;
+    }
+    if (vr.decision === "pass") return { decision: "pass" };
+    outcomes.push({ decision: vr.decision, ...(vr.errorClass !== undefined ? { errorClass: vr.errorClass } : {}) });
+  }
+  if (outcomes.length === 0) return { decision: "fail", errorClass: "permanent" };
+  return classifyWithinOneOf(outcomes);
+}
+
+function classifyOneOfGroup(
+  bundle: IdentityBundle,
+  group: ClaimRequirement[],
+  resolve: VerifyResultResolver,
+  now: number,
+): VetAggregationResult {
+  return classifyWithinOneOf(group.map((cr) => classifyClaimRequirement(bundle, cr, resolve, now)));
+}
+
+function classifyWithinOneOf(outcomes: VetAggregationResult[]): VetAggregationResult {
+  if (outcomes.some((o) => o.decision === "pass")) return { decision: "pass" };
+  const error = firstByDecision(outcomes, "error");
+  if (error !== undefined) return error;
+  const indeterminate = firstByDecision(outcomes, "indeterminate");
+  if (indeterminate !== undefined) return indeterminate;
+  return { decision: "fail", errorClass: "permanent" };
+}
+
+function classifyAcrossAccumulators(parts: VetAggregationResult[]): VetAggregationResult {
+  if (parts.length === 0) return { decision: "pass" };
+  const fail = firstByDecision(parts, "fail");
+  if (fail !== undefined) return { decision: "fail", errorClass: fail.errorClass ?? "permanent" };
+  const error = firstByDecision(parts, "error");
+  if (error !== undefined) return error;
+  const indeterminate = firstByDecision(parts, "indeterminate");
+  if (indeterminate !== undefined) return indeterminate;
+  return { decision: "pass" };
+}
+
+function firstByDecision(outcomes: VetAggregationResult[], decision: VetDecision): VetAggregationResult | undefined {
+  return outcomes.find((o) => o.decision === decision);
 }
 
 /**
  * §6.3.3 match(bundle, requirement) with MA-1..MA-3 fully resolved:
  *  - MA-1 required + oneOf, each member resolved through vetFindClaim;
  *  - MA-2 presentedBy.scheme must equal primaryClaimSelector;
- *  - MA-3 the resolved presentedBy claim must itself verify to decision==="pass"
+ *  - MA-3 the resolved presentedBy claim must itself be fresh and verify to decision==="pass"
  *    (the tier-laundering guard — extends dacs1's presence-only check).
  */
 export function vetMatch(
@@ -158,6 +255,13 @@ export function vetMatch(
     }
     const presented = bundle.claims.find((c) => c.ref === bundle.presentedBy);
     if (!presented) return { ok: false, reason: "MA-3 presentedBy does not resolve to a claim" };
+    const selectorRequirement = [
+      ...requirement.required,
+      ...(requirement.oneOf ?? []).flat(),
+    ].find((cr) => cr.scheme.toLowerCase() === requirement.primaryClaimSelector!.toLowerCase()) ?? { scheme: requirement.primaryClaimSelector, verificationRequired: false };
+    if (!claimFreshnessAndMaxAgePasses(presented, selectorRequirement, now)) {
+      return { ok: false, reason: "MA-3 presentedBy claim stale (primary freshness guard)" };
+    }
     if (!isVerifiedPass(presented, resolve)) {
       return { ok: false, reason: "MA-3 presentedBy verifiedBy does not resolve to decision=pass (tier-laundering guard)" };
     }

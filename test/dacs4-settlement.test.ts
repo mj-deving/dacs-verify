@@ -2,14 +2,17 @@ import { test, expect } from "bun:test";
 
 import {
   evidenceHash,
+  paymentEvidenceAddress,
   verifySettlementEvidence,
   type PaymentPhaseInput,
   type PhaseHandlerResult,
+  type RailDefinition,
   type SettlementEvidence,
 } from "../src/dacs4/index.ts";
 import type { ClaimReference } from "../src/dacs1.ts";
 import { keypairFromSeed, signArtifact } from "../examples/issuer-kit.ts";
 import {
+  SETTLEMENT_PHASE_INDEX,
   SETTLEMENT_ORCHESTRATOR_CLAIM,
   buildSettlementDeliverySuccess,
   buildSettlementPaymentSuccess,
@@ -41,11 +44,20 @@ function signEvidence(unsigned: Omit<SettlementEvidence, "signature">): Settleme
   };
 }
 
-function refreshRef(result: PhaseHandlerResult, evidence: SettlementEvidence): PhaseHandlerResult {
+function paymentAttestationId(jobId: string, railId: string, phaseIndex: number, resolved = false): string {
+  return paymentEvidenceAddress(jobId, railId, phaseIndex, resolved);
+}
+
+function refreshRef(result: PhaseHandlerResult, evidence: SettlementEvidence, paymentInput?: PaymentPhaseInput): PhaseHandlerResult {
+  const currentId = result.attestationRef?.id;
+  const nextId = paymentInput !== undefined && currentId?.startsWith("dacs4:payment:")
+    ? paymentAttestationId(evidence.jobId, paymentInput.rail.railId, evidence.phaseIndex, currentId.endsWith(":resolved"))
+    : currentId;
   return {
     ...result,
     attestationRef: {
       ...result.attestationRef!,
+      ...(nextId !== undefined ? { id: nextId } : {}),
       contentHash: evidenceHash(evidence),
     },
   };
@@ -64,9 +76,81 @@ function paymentCase(over: {
   for (const key of over.omitEvidence ?? []) delete unsigned[key];
   const evidence = signEvidence(unsigned);
   const paymentInput = over.paymentInput?.(base.paymentInput) ?? base.paymentInput;
-  const resultBase = over.refreshHash === false ? base.result : refreshRef(base.result, evidence);
+  const resultBase = over.refreshHash === false ? base.result : refreshRef(base.result, evidence, paymentInput);
   const result = { ...resultBase, ...over.result };
   return { ...base, result, evidence, paymentInput };
+}
+
+const HTLC_PARAMETERS = {
+  timelockSourceSec: 3_600,
+  timelockDestSec: 1_800,
+  sourceFinalitySec: 900,
+  safetyWindowSec: 600,
+};
+
+function htlcRail(parameters: Record<string, unknown> = HTLC_PARAMETERS): RailDefinition {
+  return {
+    railVersion: 1,
+    railId: "sepolia-polygon-htlc-usdc",
+    railType: "cross-chain-htlc",
+    asset: {
+      kind: "stablecoin-cross-chain",
+      canonicalSymbol: "USDC",
+      routes: [{ sourceChainId: "eip155:11155111", destChainId: "eip155:80002" }],
+    },
+    network: { kind: "cross-chain", mechanism: "htlc" },
+    phaseHandler: "pay-cross-chain-htlc",
+    parameters,
+    availability: "mocked",
+    governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+    signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-htlc-rail-signature" },
+  };
+}
+
+function htlcPaymentCase(parameters: Record<string, unknown> = HTLC_PARAMETERS) {
+  return paymentCase({
+    evidence: {
+      phase: "pay-cross-chain-htlc",
+      settlementFinality: { model: "htlc-reveal", finalityObservedAt: 1_780_014_501_000 },
+      paymentTxRefs: [{ rail: "sepolia-polygon-htlc-usdc", txHash: "polygon-amoy:0xhtlc-reveal-0001", kind: "htlc-reveal" }],
+    },
+    result: {
+      txRefs: [{ rail: "sepolia-polygon-htlc-usdc", txHash: "polygon-amoy:0xhtlc-reveal-0001", kind: "htlc-reveal" }],
+    },
+    paymentInput: (input) => ({ ...input, rail: htlcRail(parameters) }),
+  });
+}
+
+function liquidityTankPaymentCase() {
+  return paymentCase({
+    evidence: {
+      phase: "pay-cross-chain-liquidity-tank",
+      settlementFinality: { model: "liquidity-tank", finalityObservedAt: 1_780_014_502_000 },
+      paymentTxRefs: [{ rail: "base-arbitrum-tank-usdc", txHash: "arbitrum:0xtank-completed-0001", kind: "liquidity-tank-completed" }],
+    },
+    result: {
+      txRefs: [{ rail: "base-arbitrum-tank-usdc", txHash: "arbitrum:0xtank-completed-0001", kind: "liquidity-tank-completed" }],
+    },
+    paymentInput: (input) => ({
+      ...input,
+      rail: {
+        railVersion: 1,
+        railId: "base-arbitrum-tank-usdc",
+        railType: "cross-chain-liquidity-tank",
+        asset: {
+          kind: "stablecoin-cross-chain",
+          canonicalSymbol: "USDC",
+          routes: [{ sourceChainId: "eip155:8453", destChainId: "eip155:42161" }],
+        },
+        network: { kind: "cross-chain", mechanism: "liquidity-tank" },
+        phaseHandler: "pay-cross-chain-liquidity-tank",
+        parameters: { routeId: "base-arbitrum-usdc" },
+        availability: "mocked",
+        governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+        signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-tank-rail-signature" },
+      },
+    }),
+  });
 }
 
 test("payment success settlement evidence passes PC-1..PC-6 and signature", () => {
@@ -122,6 +206,33 @@ test("wrong anchor returns fail", () => {
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
 });
 
+test("payment anchor includes phaseIndex and accepts discriminated payment addresses", () => {
+  const c = paymentCase({ evidence: { phaseIndex: 1 } });
+  expect(c.result.attestationRef?.id).toBe(paymentAttestationId(c.evidence.jobId, c.paymentInput.rail.railId, 1));
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
+});
+
+test("payment anchor CF-4-encodes colon-bearing railId", () => {
+  const c = paymentCase({
+    paymentInput: (input) => ({ ...input, rail: { ...input.rail, railId: "evm-erc20:1:USDC" } }),
+  });
+  expect(c.result.attestationRef?.id).toBe(`dacs4:payment:${c.evidence.jobId}:evm-erc20%3A1%3AUSDC:${c.evidence.phaseIndex}`);
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
+});
+
+test("same jobId and railId with the wrong phaseIndex anchor fails instead of colliding", () => {
+  const c = paymentCase({
+    evidence: { phaseIndex: 1 },
+    result: {
+      attestationRef: {
+        ...buildSettlementPaymentSuccess().result.attestationRef!,
+        id: paymentAttestationId(buildSettlementPaymentSuccess().evidence.jobId, buildSettlementPaymentSuccess().paymentInput.rail.railId, SETTLEMENT_PHASE_INDEX),
+      },
+    },
+  });
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
 test("attestationRef hash mismatch returns fail", () => {
   const c = paymentCase({ refreshHash: false, evidence: { paymentAmount: { amount: "6", currency: "USDC" } } });
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
@@ -134,6 +245,45 @@ test("failure evidence without reason returns fail", () => {
     omitEvidence: ["reason", "settlementFinality"],
   });
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("interim payment record without supersedesEvidenceRef remains accepted", () => {
+  const c = buildSettlementPaymentSuccess();
+  expect(c.result.attestationRef?.id).toBe(paymentAttestationId(c.evidence.jobId, c.paymentInput.rail.railId, c.evidence.phaseIndex));
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
+});
+
+test("resolved payment record with supersedesEvidenceRef passes", () => {
+  const base = buildSettlementPaymentSuccess();
+  const { signature: _signature, ...unsignedBase } = base.evidence;
+  const evidence = signEvidence({
+    ...unsignedBase,
+    supersedesEvidenceRef: {
+      kind: "dacs-4-evidence",
+      id: paymentAttestationId(base.evidence.jobId, base.paymentInput.rail.railId, base.evidence.phaseIndex),
+      contentHash: base.evidenceHash,
+    },
+  });
+  const result = refreshRef({
+    ...base.result,
+    attestationRef: {
+      ...base.result.attestationRef!,
+      id: paymentAttestationId(base.evidence.jobId, base.paymentInput.rail.railId, base.evidence.phaseIndex, true),
+    },
+  }, evidence, base.paymentInput);
+  expect(verifySettlementEvidence({ result, evidence, expectedOrchestrator: base.expectedOrchestrator, paymentInput: base.paymentInput, resolveKey: resolveFrom(base.publicKeys) })).toBe("pass");
+});
+
+test("resolved payment record without supersedesEvidenceRef returns fail", () => {
+  const base = buildSettlementPaymentSuccess();
+  const result = refreshRef({
+    ...base.result,
+    attestationRef: {
+      ...base.result.attestationRef!,
+      id: paymentAttestationId(base.evidence.jobId, base.paymentInput.rail.railId, base.evidence.phaseIndex, true),
+    },
+  }, base.evidence, base.paymentInput);
+  expect(verifySettlementEvidence({ result, evidence: base.evidence, expectedOrchestrator: base.expectedOrchestrator, paymentInput: base.paymentInput, resolveKey: resolveFrom(base.publicKeys) })).toBe("fail");
 });
 
 test("wrong signer key returns fail", () => {
@@ -269,6 +419,34 @@ test("rail whose railType does not match its network kind returns fail", () => {
     paymentInput: (input) => ({ ...input, rail: { ...input.rail, network: { kind: "solana", cluster: "mainnet" } } }),
   });
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("HTLC payment with pinned source finality and safety margin passes", () => {
+  const c = htlcPaymentCase();
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
+});
+
+test("HTLC payment missing sourceFinalitySec returns fail", () => {
+  const { sourceFinalitySec: _sourceFinalitySec, ...parameters } = HTLC_PARAMETERS;
+  const c = htlcPaymentCase(parameters);
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("HTLC payment missing safetyWindowSec returns fail", () => {
+  const { safetyWindowSec: _safetyWindowSec, ...parameters } = HTLC_PARAMETERS;
+  const c = htlcPaymentCase(parameters);
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("HTLC payment with insufficient source timelock margin returns fail", () => {
+  const c = htlcPaymentCase({ ...HTLC_PARAMETERS, timelockSourceSec: 3_300 });
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("cross-chain anchor-pending payment may omit attestationRef at return time (PC-7)", () => {
+  const c = liquidityTankPaymentCase();
+  const { attestationRef: _attestationRef, ...result } = c.result;
+  expect(verifySettlementEvidence({ ...c, result, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
 });
 
 // POSITIVE locks — documenting the deliberate conformance-scope interpretation (advisor commitment-boundary review).

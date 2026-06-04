@@ -1,5 +1,6 @@
 import { sha256Hex } from "./hash.ts";
 import { canonicalize } from "./canonicalize.ts";
+import { cf4Encode } from "./logical-address.ts";
 
 // DACS-1 (Identify) — claim references, bundle matching, listing addressing and
 // the validation order. Types are the subset the verifier needs; field names
@@ -14,6 +15,7 @@ export interface BundleClaim {
   issuedAt?: number;
   expiresAt?: number;
 }
+export type VerifyResultRef = NonNullable<BundleClaim["verifiedBy"]>;
 
 export interface IdentityBundle {
   bundleVersion: "1";
@@ -38,6 +40,24 @@ export interface BundleRequirement {
   primaryClaimSelector?: string;
 }
 
+export type IdentityTier = "institutional" | "verified" | "self-declared";
+export type VerifiedClaimPredicate = (claim: BundleClaim) => boolean;
+
+const INSTITUTIONAL_SCHEMES: ReadonlySet<string> = new Set([
+  "lei",
+  "finra-crd",
+  "sam-uei",
+  "fedramp",
+  "cmmc",
+  "naics",
+  "cci-lei",
+  "cci-finra-crd",
+  "cci-sam-uei",
+  "cci-fedramp",
+  "cci-cmmc",
+  "cci-naics",
+]);
+
 /** Extract the scheme component (before the first ":") of a claim reference. */
 export function schemeOf(ref: ClaimReference): string {
   const i = ref.indexOf(":");
@@ -55,10 +75,63 @@ export function findClaim(
   for (const c of bundle.claims) {
     if (schemeOf(c.ref) !== cr.scheme.toLowerCase()) continue;
     if (cr.verificationRequired && (!c.verifiedBy)) continue; // resolution/decision check is downstream
-    if (cr.maxAge !== undefined && c.issuedAt !== undefined && now - c.issuedAt > cr.maxAge * 1000) continue;
+    if (!claimFreshnessAndMaxAgePasses(c, cr, now)) continue;
     return c;
   }
   return null;
+}
+
+/**
+ * Reference-verifier freshness pre-gate for §6.3.3 find_claim.
+ * The full normative window is resolver-aware (VerifyResult.verifiedAt,
+ * validUntil, recipeVersion defaultMaxAgeSec, and authority clamping). This
+ * substrate-free helper intentionally enforces only the wrapper fail-closed
+ * boundary before maxAge: unknown age is stale; expired claims are stale.
+ */
+export function claimFreshnessPasses(claim: BundleClaim, now: number): boolean {
+  if (claim.issuedAt === undefined && claim.expiresAt === undefined) return false;
+  if (claim.issuedAt !== undefined && (!Number.isSafeInteger(claim.issuedAt) || claim.issuedAt > now)) return false;
+  if (claim.expiresAt !== undefined && (!Number.isSafeInteger(claim.expiresAt) || now > claim.expiresAt)) return false;
+  return true;
+}
+
+export function claimFreshnessAndMaxAgePasses(claim: BundleClaim, cr: ClaimRequirement, now: number): boolean {
+  if (!claimFreshnessPasses(claim, now)) return false;
+  if (cr.maxAge !== undefined) {
+    if (claim.issuedAt === undefined) return false;
+    if (now - claim.issuedAt > cr.maxAge * 1000) return false;
+  }
+  return true;
+}
+
+export function deriveIdentityTier(
+  bundle: IdentityBundle,
+  now: number,
+  isResolvedVerifiedClaim: VerifiedClaimPredicate = () => false,
+): IdentityTier {
+  let hasVerifiedClaim = false;
+  for (const claim of bundle.claims) {
+    if (!isVerifiedAndFreshClaim(claim, now, isResolvedVerifiedClaim)) continue;
+    if (INSTITUTIONAL_SCHEMES.has(schemeOf(claim.ref))) return "institutional";
+    hasVerifiedClaim = true;
+  }
+  return hasVerifiedClaim ? "verified" : "self-declared";
+}
+
+export function isVerifyResultRef(value: unknown): value is VerifyResultRef {
+  if (value === null || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.contentHash !== "string") return false;
+  if (!Number.isSafeInteger(v.recipeVersion)) return false;
+  if (v.anchor === null || typeof v.anchor !== "object") return false;
+  const anchor = v.anchor as Record<string, unknown>;
+  return typeof anchor.kind === "string" && anchor.kind.length > 0
+    && typeof anchor.locator === "string" && anchor.locator.length > 0;
+}
+
+function isVerifiedAndFreshClaim(claim: BundleClaim, now: number, isResolvedVerifiedClaim: VerifiedClaimPredicate): boolean {
+  if (!isResolvedVerifiedClaim(claim)) return false;
+  return claimFreshnessPasses(claim, now);
 }
 
 export type MatchResult = { ok: true } | { ok: false; reason: string };
@@ -81,10 +154,17 @@ export function matchRequirement(
     if (schemeOf(bundle.presentedBy) !== requirement.primaryClaimSelector.toLowerCase()) {
       return { ok: false, reason: "presentedBy scheme != primaryClaimSelector" };
     }
-    // §6.3.3 step 3b: the resolved presentedBy claim must itself be verified.
+    // §6.3.3 step 3b: the resolved presentedBy claim must itself be verified and fresh.
     const presented = bundle.claims.find((c) => c.ref === bundle.presentedBy);
     if (!presented) return { ok: false, reason: "presentedBy does not resolve to a claim" };
     if (!presented.verifiedBy) return { ok: false, reason: "presentedBy claim unverified (tier-laundering guard)" };
+    const selectorRequirement = [
+      ...requirement.required,
+      ...(requirement.oneOf ?? []).flat(),
+    ].find((cr) => cr.scheme.toLowerCase() === requirement.primaryClaimSelector!.toLowerCase()) ?? { scheme: requirement.primaryClaimSelector, verificationRequired: false };
+    if (!claimFreshnessAndMaxAgePasses(presented, selectorRequirement, now)) {
+      return { ok: false, reason: "presentedBy claim stale (primary freshness guard)" };
+    }
   }
   return { ok: true };
 }
@@ -97,7 +177,7 @@ export function listingLogicalAddress(
   listingId: string,
   listingVersion: number,
 ): string {
-  return `dacs1:${sellerPrimaryClaim}:${listingId}:v${listingVersion}`;
+  return `dacs1:${cf4Encode(sellerPrimaryClaim)}:${cf4Encode(listingId)}:v${listingVersion}`;
 }
 
 /**

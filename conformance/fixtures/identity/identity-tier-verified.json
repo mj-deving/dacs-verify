@@ -1,0 +1,34 @@
+{
+  "expectedIdentityTier": "verified",
+  "identityBundle": {
+    "bundleVersion": "1",
+    "claims": [
+      {
+        "ref": "key:bbbbbbbb"
+      },
+      {
+        "issuedAt": 1760000000000,
+        "ref": "domain:example.com",
+        "verifiedBy": {
+          "anchor": {
+            "kind": "storage-program",
+            "locator": "stor-verify-domain-example.com"
+          },
+          "contentHash": "11ca96e9ed78f104dba1c6e28f4242b6c4cf4024c0cc3adc9b8e56369a62d20c",
+          "recipeVersion": 1
+        }
+      }
+    ],
+    "identityTier": "verified",
+    "presentation": {
+      "kind": "per-claim",
+      "signatures": []
+    },
+    "presentedAt": 1760000000000,
+    "presentedBy": "domain:example.com"
+  },
+  "kind": "IdentityTierCase",
+  "specRefs": [
+    "§6.3.2.1"
+  ]
+}

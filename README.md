@@ -31,18 +31,17 @@ The load-bearing design point: **arbitrator legitimacy binds at *agreement* time
 
 `examples/` holds a demo **issuer kit** (the only place a private key ever lives — the verifier in `src/` never signs) and runnable scenarios that produce byte-stable, **illustrative** vectors in `vectors/dacs-x/` — non-normative candidates for §14 dispute fixtures, **not** conformance vectors for a ratified spec.
 
-**The settlement → dispute seam (HTLC-9, §9.5.4 / §9.8).** DACS-X isn't only forward-design: settlement specifies the asymmetric cross-chain state `dest-revealed-source-unclaimed` (the payee was paid on the *destination* chain but the *source* claim failed) yet **defers its closure to "dispute or manual intervention" — i.e. DACS-X.** `examples/htlc9-dispute-scenario.ts` closes exactly that state via a §9.7.1 `correction` amendment — never a refund, which would double-pay a payee already paid on the destination chain. It's the natural coordination point with the HTLC settlement lane.
+**The HTLC-9 asymmetric state (§9.5.4 / §9.8).** Settlement specifies `dest-revealed-source-unclaimed` (the payee was paid on the *destination* chain but the *source* claim failed) and defers closure to dispute or manual intervention. The current verifier models that boundary in the §14.4 settlement vectors and §14.5 DACS-5 verify vectors, where `settle-asymmetric` remains a legal non-terminal state until resolved.
 
 > **Proposed & non-normative.** DACS-X is not part of DACS v0.1. The `dacs-x-*` separator namespace and these artifact shapes presuppose design choices the steward owns. The prototype exists to make a §11.2.1 discussion concrete — not to assert a standard. The tests verify the prototype's internal self-consistency, **not** conformance to any ratified DACS-X (none exists yet).
 
 ## Run
 
 ```bash
-bun test                                # foundation + DACS-5 bundle + DACS-X dispute + HTLC-9 seam
-bun conformance/run.ts                  # 108 byte-stable conformance vectors (24 primitives + 4 bundle + 9 dispute + 9 disclosure + 30 §14.4 settlement + 32 §14.5 verify)
+bun test                                # foundation + DACS-5 bundle + DACS-X dispute + settlement/verify lanes
+bun conformance/run.ts                  # 185 byte-stable golden conformance vectors
 bun examples/attestation-bundle-0004.ts # emit the full §10.4 AttestationBundle fixture (DACS-VERIFY-0004)
 bun examples/dispute-scenario.ts        # §10.4.3 divergent-bundle dispute → arbitrated → reputation reweighted
-bun examples/htlc9-dispute-scenario.ts  # the HTLC-9 settlement seam → correction amendment (not a refund)
 bun run typecheck                       # strict tsc --noEmit, clean
 ```
 
