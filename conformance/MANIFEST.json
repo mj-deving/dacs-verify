@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "185 vectors — 7 canonicalize + 5 decimal + 5 signing + 15 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 36 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.",
+    "golden": "186 vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 36 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -218,6 +218,20 @@
         "expiresOnly": true,
         "expiresOnlyMaxAge": false,
         "stalePresentedByPrimary": false
+      }
+    },
+    {
+      "id": "dacs1-siwd-resource-binding",
+      "area": "dacs1",
+      "spec": "§6.3.2",
+      "summary": "SIWD Resource binds to lowercase hex of the full domain-separated signed_bytes",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "bundleHash": "6d7c726a881c38fe307d01439051f5e197702da21d072265a6f4e7d1e1a9f128",
+        "signedBytes": "dacs-bundle-presentation:v1:6d7c726a881c38fe307d01439051f5e197702da21d072265a6f4e7d1e1a9f128",
+        "resource": "dacs:646163732d62756e646c652d70726573656e746174696f6e3a76313a36643763373236613838316333386665333037643031343339303531663565313937373032646132316430373232363561366634653764316531613966313238",
+        "decoded": "dacs-bundle-presentation:v1:6d7c726a881c38fe307d01439051f5e197702da21d072265a6f4e7d1e1a9f128"
       }
     },
     {

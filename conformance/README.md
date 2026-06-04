@@ -6,7 +6,7 @@ An independent, third-party set of executable conformance vectors for DACS v0.1,
 
 Surface labels travel with each vector:
 
-- **GOLDEN (185)** — byte-stable and accepted by this reference verifier: 7 canonicalize, 5 decimal, 5 signing, 15 DACS-1, 2 addressing, 4 §10.4 bundle, 17 dispute/disclosure, 36 settlement, 47 verify, 24 vet, 11 negotiate, and 12 governance checks.
+- **GOLDEN (186)** — byte-stable and accepted by this reference verifier: 7 canonicalize, 5 decimal, 5 signing, 16 DACS-1, 2 addressing, 4 §10.4 bundle, 17 dispute/disclosure, 36 settlement, 47 verify, 24 vet, 11 negotiate, and 12 governance checks.
 - **CANDIDATE (0)** — no current candidate vectors.
 
 ## Why
@@ -16,7 +16,7 @@ The spec's §14 conformance chapter defines conformant behaviour but ships no se
 ## Run
 
 ```sh
-bun conformance/run.ts          # run all 185 vectors → exit non-zero on any failure
+bun conformance/run.ts          # run all 186 vectors → exit non-zero on any failure
 bun conformance/run.ts --emit   # regenerate MANIFEST.json + vectors/golden.json
 ```
 
@@ -27,7 +27,7 @@ Deterministic by construction: every key and signature is derived from a fixed p
 - `canonicalize`: 7 golden vectors, §7.1 JCS canonicalization and §7.2 signed scope.
 - `decimal`: 5 golden vectors, §14.4 CD-1 canonical decimals and §9.3 positivity.
 - `signing`: 5 golden vectors, §7.7 domain-separated Ed25519 (SIG-2 / SIG-4).
-- `dacs1`: 15 golden vectors, §6.3 identity bundles, freshness, identityTier derivation, requirement matching, listing validation, and forged/unresolved `verifiedBy` fail-closed tiering.
+- `dacs1`: 16 golden vectors, §6.3 identity bundles, SIWD Resource binding, freshness, identityTier derivation, requirement matching, listing validation, and forged/unresolved `verifiedBy` fail-closed tiering.
 - `addressing`: 2 golden vectors, CF-4 reserved-delimiter encoding for DACS logical address segments.
 - `bundle`: 4 golden vectors, §10.4 / §10.4.1 AttestationBundle verification.
 - `dispute`: 8 golden vectors, §11.2.1 DACS-X dispute flow with the 4-value decision (`pass`/`fail`/`indeterminate`/`error`). (The former HTLC-9 `correction`-amendment vector was retired — Round-4 R4-A removed the correction amendment and resolves an HTLC-9 asymmetric settlement through the ST-8 `settle-asymmetric` state at the settlement layer; see the §14.5 verify-st-asymmetric-* vectors.)

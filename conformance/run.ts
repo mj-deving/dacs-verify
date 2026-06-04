@@ -298,6 +298,25 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     },
     { absentBoth: false, expired: false, expiresOnly: true, expiresOnlyMaxAge: false, stalePresentedByPrimary: false });
 
+  const siwdBundle = mkBundle([{ ref: "key:siwd-resource" }]);
+  const { presentation: _siwdPresentation, ...siwdSignedScope } = siwdBundle;
+  const siwdBundleHash = sha256Hex(canonicalize(siwdSignedScope));
+  const siwdSignedBytes = `dacs-bundle-presentation:v1:${siwdBundleHash}`;
+  const siwdResource = `dacs:${Buffer.from(siwdSignedBytes, "utf8").toString("hex")}`;
+  rec("dacs1-siwd-resource-binding", "dacs1", "§6.3.2", "SIWD Resource binds to lowercase hex of the full domain-separated signed_bytes",
+    {
+      bundleHash: siwdBundleHash,
+      signedBytes: siwdSignedBytes,
+      resource: siwdResource,
+      decoded: Buffer.from(siwdResource.slice("dacs:".length), "hex").toString("utf8"),
+    },
+    {
+      bundleHash: siwdBundleHash,
+      signedBytes: siwdSignedBytes,
+      resource: siwdResource,
+      decoded: siwdSignedBytes,
+    });
+
   type IdentityTierCase = {
     kind: "IdentityTierCase";
     identityBundle: IdentityBundle;
@@ -1643,7 +1662,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 15 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 36 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 36 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
