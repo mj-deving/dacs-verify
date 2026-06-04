@@ -1,0 +1,166 @@
+import {
+  schemeOf,
+  type BundleClaim,
+  type BundleRequirement,
+  type ClaimRequirement,
+  type IdentityBundle,
+  type MatchResult,
+} from "../dacs1.ts";
+
+// DACS-2 (Vet) — the verifier-side conformance surface of §7.4/§7.5/§7.6 and the
+// §6.3.3 match algorithm. This module covers the read-only checks the spec's §14.2
+// test plan groups: the method common contract (CM-1..5), retry semantics
+// (VP-R1..4), and the matching algorithm (MA-1..3) — the last extending dacs1's
+// presence-only MA-3 to the full `verifiedBy` → resolved-decision check the spec
+// mandates. No key handling; recipe authoring / caching / aggregation stay above.
+
+// §7.5.1 — the closed set of VerifyResult decisions (CM-4).
+export type VetDecision = "pass" | "fail" | "indeterminate" | "error";
+export const VET_DECISIONS: readonly VetDecision[] = ["pass", "fail", "indeterminate", "error"];
+
+/** CM-4: classify a raw decision string against the closed §7.5.1 set; throws on anything else. */
+export function classifyVetOutcome(raw: string): VetDecision {
+  if ((VET_DECISIONS as readonly string[]).includes(raw)) return raw as VetDecision;
+  throw new Error(`§7.5.1 CM-4: outcome must be one of ${VET_DECISIONS.join("/")}, got ${JSON.stringify(raw)}`);
+}
+
+// §7.5 — VerifyResult (the subset the contract checks need). `method` is the
+// method's own kind (CM-5); `retryClass` drives VP-R1/VP-R3.
+export interface VerifyResult {
+  decision: VetDecision;
+  method: string;
+  recipeVersion?: number;
+  retryClass?: "transient" | "permanent";
+  retryOnIndeterminate?: boolean;
+  data?: Record<string, unknown>;
+}
+
+export type ContractResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * CM-1 / CM-3 / CM-5: a conformant VerifyResult MUST have a decision in the
+ * closed set and a non-empty `method` set to its own kind. A result missing
+ * either is rejected (surfaced as a contract error), never silently passed.
+ * When `expectedMethod` is given, CM-5 requires `method === expectedMethod`.
+ */
+export function validateMethodContract(vr: Partial<VerifyResult>, expectedMethod?: string): ContractResult {
+  if (typeof vr.method !== "string" || vr.method.length === 0) {
+    return { ok: false, reason: "CM-1/CM-5: VerifyResult.method missing" };
+  }
+  if (typeof vr.decision !== "string" || !(VET_DECISIONS as readonly string[]).includes(vr.decision)) {
+    return { ok: false, reason: "CM-3/CM-4: VerifyResult.decision missing or outside §7.5.1 set" };
+  }
+  if (expectedMethod !== undefined && vr.method !== expectedMethod) {
+    return { ok: false, reason: `CM-5: VerifyResult.method ${vr.method} != produced kind ${expectedMethod}` };
+  }
+  return { ok: true };
+}
+
+/**
+ * CM-2: the public anchor address for a DACS-2 attestation —
+ * `dacs2:{jobId}:{scheme}:{identifier}:v{recipeVersion}` (§7.3.1). The scheme is
+ * lowercased per CF-2 canonical claim form; the identifier is carried verbatim
+ * (NFC canonicalisation of the identifier is the caller's responsibility).
+ */
+export function vetAttestationAddress(jobId: string, scheme: string, identifier: string, recipeVersion: number): string {
+  return `dacs2:${jobId}:${scheme.toLowerCase()}:${identifier}:v${recipeVersion}`;
+}
+
+// §7.6.1 — retry budget default (VP-R1).
+export const DEFAULT_RETRY_BUDGET = 3;
+
+export interface RetryContext {
+  decision: VetDecision;
+  retryClass?: "transient" | "permanent";
+  retryOnIndeterminate?: boolean;
+  attempts: number; // attestation attempts already made (≥1 after the first)
+  retryBudget?: number;
+}
+
+/**
+ * VP-R1..R4: decide whether the verifier MAY retry.
+ *  - VP-R1: decision=error + retryClass=transient → retry while attempts < budget.
+ *  - VP-R3: decision=error + retryClass=permanent → never retry within the session.
+ *  - VP-R4: decision=indeterminate → retry ONLY if retryOnIndeterminate===true (default false).
+ *  - pass/fail are terminal authority answers — never retried.
+ * VP-R2 (each retry MUST produce a NEW attestation) is a producer obligation; this
+ * predicate only governs the may-retry decision.
+ */
+export function mayRetry(ctx: RetryContext): boolean {
+  const budget = ctx.retryBudget ?? DEFAULT_RETRY_BUDGET;
+  if (ctx.attempts >= budget) return false; // VP-R1 budget bound
+  switch (ctx.decision) {
+    case "error":
+      return ctx.retryClass === "transient"; // VP-R1 transient yes; VP-R3 permanent (or unset) no
+    case "indeterminate":
+      return ctx.retryOnIndeterminate === true; // VP-R4
+    case "pass":
+    case "fail":
+      return false; // terminal authority answer
+  }
+}
+
+// ── §6.3.3 matching with full verifiedBy → decision resolution ───────────────
+
+/** Resolves a claim's `verifiedBy` reference to the VerifyResult it points at (§6.3.3: decision is read from the resolved result, not the ref). */
+export type VerifyResultResolver = (verifiedBy: NonNullable<BundleClaim["verifiedBy"]>) => VerifyResult | null;
+
+function isVerifiedPass(c: BundleClaim, resolve: VerifyResultResolver): boolean {
+  if (!c.verifiedBy) return false;
+  const vr = resolve(c.verifiedBy);
+  return vr != null && vr.decision === "pass";
+}
+
+/**
+ * §6.3.3 find_claim, extended: when `verificationRequired`, the claim counts only
+ * if its `verifiedBy` RESOLVES to a VerifyResult with decision==="pass" — dacs1's
+ * findClaim stops at presence and defers this resolution here.
+ */
+export function vetFindClaim(
+  bundle: IdentityBundle,
+  cr: ClaimRequirement,
+  resolve: VerifyResultResolver,
+  now: number,
+): BundleClaim | null {
+  for (const c of bundle.claims) {
+    if (schemeOf(c.ref) !== cr.scheme.toLowerCase()) continue;
+    if (cr.verificationRequired && !isVerifiedPass(c, resolve)) continue;
+    if (cr.maxAge !== undefined && c.issuedAt !== undefined && now - c.issuedAt > cr.maxAge * 1000) continue;
+    return c;
+  }
+  return null;
+}
+
+/**
+ * §6.3.3 match(bundle, requirement) with MA-1..MA-3 fully resolved:
+ *  - MA-1 required + oneOf, each member resolved through vetFindClaim;
+ *  - MA-2 presentedBy.scheme must equal primaryClaimSelector;
+ *  - MA-3 the resolved presentedBy claim must itself verify to decision==="pass"
+ *    (the tier-laundering guard — extends dacs1's presence-only check).
+ */
+export function vetMatch(
+  bundle: IdentityBundle,
+  requirement: BundleRequirement,
+  resolve: VerifyResultResolver,
+  now: number,
+): MatchResult {
+  for (const cr of requirement.required) {
+    if (!vetFindClaim(bundle, cr, resolve, now)) return { ok: false, reason: `MA-1 missing required: ${cr.scheme}` };
+  }
+  for (const group of requirement.oneOf ?? []) {
+    if (!group.some((cr) => vetFindClaim(bundle, cr, resolve, now))) {
+      return { ok: false, reason: "MA-1 oneOf group unsatisfied" };
+    }
+  }
+  if (requirement.primaryClaimSelector) {
+    if (schemeOf(bundle.presentedBy) !== requirement.primaryClaimSelector.toLowerCase()) {
+      return { ok: false, reason: "MA-2 presentedBy scheme != primaryClaimSelector" };
+    }
+    const presented = bundle.claims.find((c) => c.ref === bundle.presentedBy);
+    if (!presented) return { ok: false, reason: "MA-3 presentedBy does not resolve to a claim" };
+    if (!isVerifiedPass(presented, resolve)) {
+      return { ok: false, reason: "MA-3 presentedBy verifiedBy does not resolve to decision=pass (tier-laundering guard)" };
+    }
+  }
+  return { ok: true };
+}

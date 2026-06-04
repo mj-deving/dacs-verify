@@ -6,17 +6,17 @@ An independent, third-party set of executable conformance vectors for DACS v0.1,
 
 Surface labels travel with each vector:
 
-- **GOLDEN (116)** — byte-stable and accepted by this reference verifier: 24 primitive checks, 4 checks in one §10.4 bundle area, 17 dispute/disclosure checks (8 dispute + 9 disclosure) pinned to DACS-VERIFY-0004 bundle refs, 30 §14.4 settlement-evidence checks, and 41 §14.5 verify checks.
+- **GOLDEN (144)** — byte-stable and accepted by this reference verifier: 24 primitive checks, 4 checks in one §10.4 bundle area, 17 dispute/disclosure checks (8 dispute + 9 disclosure) pinned to DACS-VERIFY-0004 bundle refs, 30 §14.4 settlement-evidence checks, 41 §14.5 verify checks, 17 §14.2 vet checks (CM-1..5 / VP-R1..4 / MA-1..3), and 11 §14.3 negotiate checks (§8.5.2 agreement validation).
 - **CANDIDATE (0)** — no current candidate vectors.
 
 ## Why
 
-The spec's §14 conformance chapter defines conformant behaviour but ships no second independent verifier and no published vectors. This is one: 24 golden primitive vectors, DACS-VERIFY-0004 §10.4 AttestationBundle fixtures, 17 golden vectors exercising the proposed DACS-X dispute + disclosure flow against pinned bundle refs, 30 golden §14.4 SettlementEvidence vectors (PC-1..6, RD-5 rail coherence, CD-1 amounts), and 41 golden §14.5 Verify vectors (two-sided lookup, §10.4.3(a-d) consumption, ST-1..8 transitions incl. the non-terminal `settle-asymmetric` open state, and §10.5.1 reputation derivation with two-sided per-jobId reconciliation).
+The spec's §14 conformance chapter defines conformant behaviour but ships no second independent verifier and no published vectors. This is one: 24 golden primitive vectors, DACS-VERIFY-0004 §10.4 AttestationBundle fixtures, 17 golden vectors exercising the proposed DACS-X dispute + disclosure flow against pinned bundle refs, 30 golden §14.4 SettlementEvidence vectors (PC-1..6, RD-5 rail coherence, CD-1 amounts), and 41 golden §14.5 Verify vectors (two-sided lookup, §10.4.3(a-d) consumption, ST-1..8 transitions incl. the non-terminal `settle-asymmetric` open state, and §10.5.1 reputation derivation with two-sided per-jobId reconciliation), 17 golden §14.2 Vet vectors (method common contract CM-1..5, retry VP-R1..4, and the §6.3.3 MA-1..3 match algorithm with full `verifiedBy`→decision resolution), and 11 golden §14.3 Negotiate vectors (§8.5.2 agreement listing-conformance).
 
 ## Run
 
 ```sh
-bun conformance/run.ts          # run all 116 vectors → exit non-zero on any failure
+bun conformance/run.ts          # run all 144 vectors → exit non-zero on any failure
 bun conformance/run.ts --emit   # regenerate MANIFEST.json + vectors/golden.json
 ```
 
@@ -33,6 +33,8 @@ Deterministic by construction: every key and signature is derived from a fixed p
 - `disclosure`: 9 golden vectors, §8.7 DACS-X arbitrator transcript-disclosure (step 3, DP-1).
 - `settlement`: 30 golden vectors, §14.4 SettlementEvidence verification — PC-1..6 (anchor, attestationRef→evidence hash, outcome classification, currency-resolution, settlementFinality), RD-5 railType↔asset/network coherence, §9.5.1/PIPE-5 amount==agreement.terms.price, CD-1/§9.3 amount canonicalisation, and the `dacs-4-evidence` signature.
 - `verify`: 41 golden vectors, §14.5 DACS-5 Verify — two-sided lookup `stor-{sha256(jobId+"-bundle-"+role)}` (§10.4.2) with jobId binding, §10.4.3(a-d) consumption (one-sided→aborted-by-self per §10.11, unified, divergent — "divergent" is a **consumer verdict, NOT an `outcome` enum value**), the ST-1..8 transition table + state→outcome mapping (§10.3.1, incl. the non-terminal `settle-asymmetric` HTLC-9 open state, ST-8), and reputation derivation (§10.5.1 — two-sided per-jobId reconciliation via `anchoredByRole` with `perspective_flip` of a counterparty-anchored copy per §10.11; `party_fault_denom` excludes `failed-substrate`; null≠zero; rating aggregation with `(rater,jobId,targetRole)` de-duplication; `observedTransactionalVolume` grouped by currency).
+- `vet`: 17 golden vectors, §14.2 DACS-2 — method common contract (CM-1..5: outcome classification to the closed `{pass,fail,indeterminate,error}` set, `VerifyResult.method` binding, `dacs2:{jobId}:{scheme}:{identifier}:v{recipeVersion}` attestation address), retry semantics (VP-R1..4: transient retry within budget, permanent no-retry, no-retry-on-indeterminate unless flagged), and the §6.3.3 match algorithm (MA-1..3) with full `verifiedBy`→resolved-decision checking — extends dacs1's presence-only MA-3 (`vet-ma3-resolution-vs-presence` shows the presence-only check false-accepts a present-but-failing `verifiedBy` where full resolution rejects).
+- `negotiate`: 11 golden vectors, §14.3 / §8.5.2 DACS-3 — agreement listing-conformance: currency-equality first, CD-1 full-precision price-band (inclusive edges, BigInt cross-multiply, no division), rail acceptance, deliverable type/hash/schemaUrl conformance, committedAt-relative deadline + `validity.notAfter` (anchored timestamp, not self-reported `generatedAt`), `derivedFromPattern` match, PS-3 fixed-price-over-negotiable must equal `bandCenter` exactly, signed `terms.price.amount` CD-1 enforcement, and the optional `priceAnchor` (absent/`null` ≠ reject; when present ⇒ CD-1 price + `attestationRef.contentHash`).
 
 ## §8.7 arbitrator-disclosure (step 3)
 

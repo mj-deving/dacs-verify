@@ -5,5 +5,7 @@ export * from "./signing.ts";
 export * from "./dacs1.ts";
 export * from "./report.ts";
 export * as dacsx from "./dacsx/index.ts";
+export * as dacs2 from "./dacs2/vet.ts";
+export * as dacs3 from "./dacs3/agreement.ts";
 export * from "./dacs4/index.ts";
 export * as dacs5 from "./dacs5/index.ts";

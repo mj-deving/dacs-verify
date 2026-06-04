@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "116 vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify; byte-stable and reference-verifier-accepted.",
+    "golden": "144 vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2); byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -248,6 +248,318 @@
       "want": {
         "shape64": true,
         "notLen40": true
+      }
+    },
+    {
+      "id": "vet-cm4-classify",
+      "area": "vet",
+      "spec": "§7.5.1",
+      "summary": "CM-4: the four §7.5.1 outcomes classify; an unknown decision throws",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "classified": [
+          "pass",
+          "fail",
+          "indeterminate",
+          "error"
+        ],
+        "unknown": "throws"
+      }
+    },
+    {
+      "id": "vet-cm5-method-contract",
+      "area": "vet",
+      "spec": "§7.5",
+      "summary": "CM-5: VerifyResult.method must equal the producing kind — match accepted, mismatch rejected",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "match": true,
+        "mismatch": false
+      }
+    },
+    {
+      "id": "vet-cm1-input-shape",
+      "area": "vet",
+      "spec": "§7.5",
+      "summary": "CM-1/CM-3: a VerifyResult missing/invalid decision or method is rejected, never silently passed",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "noMethod": false,
+        "noDecision": false,
+        "badDecision": false,
+        "wellFormed": true
+      }
+    },
+    {
+      "id": "vet-cm2-address",
+      "area": "vet",
+      "spec": "§7.3.1",
+      "summary": "CM-2: attestation anchors at dacs2:{jobId}:{scheme}:{identifier}:v{recipeVersion} (scheme lowercased per CF-2)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "dacs2:job-abc:lei:984500ABCDEF12345678:v3"
+    },
+    {
+      "id": "vet-vpr1-transient-retry",
+      "area": "vet",
+      "spec": "§7.6.1",
+      "summary": "VP-R1: decision=error + retryClass=transient + attempts<budget → retry",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "vet-vpr1-budget-exhausted",
+      "area": "vet",
+      "spec": "§7.6.1",
+      "summary": "VP-R1: decision=error + transient at attempts==budget → no retry",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "vet-vpr3-permanent-noretry",
+      "area": "vet",
+      "spec": "§7.6.1",
+      "summary": "VP-R3: decision=error + retryClass=permanent → never retry within session",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "vet-vpr4-indeterminate-noretry",
+      "area": "vet",
+      "spec": "§7.6.1",
+      "summary": "VP-R4: indeterminate + retryOnIndeterminate unset (default false) → no retry",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "vet-vpr4-indeterminate-flag-retry",
+      "area": "vet",
+      "spec": "§7.6.1",
+      "summary": "VP-R4: indeterminate + retryOnIndeterminate=true → retry",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "vet-terminal-noretry",
+      "area": "vet",
+      "spec": "§7.6.1",
+      "summary": "a terminal authority answer (pass/fail) is never retried",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "pass": false,
+        "fail": false
+      }
+    },
+    {
+      "id": "vet-ma1-required-missing",
+      "area": "vet",
+      "spec": "§6.3.3",
+      "summary": "MA-1: a missing required claim → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "vet-ma1-oneof",
+      "area": "vet",
+      "spec": "§6.3.3",
+      "summary": "MA-1: oneOf satisfied by any member → continue; satisfied by none → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "satisfied": true,
+        "unsatisfied": false
+      }
+    },
+    {
+      "id": "vet-ma2-scheme-mismatch",
+      "area": "vet",
+      "spec": "§6.3.3",
+      "summary": "MA-2: presentedBy scheme != primaryClaimSelector → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "vet-ma3-unverified-reject",
+      "area": "vet",
+      "spec": "§6.3.3",
+      "summary": "MA-3: selector set + presentedBy verifiedBy resolves decision!=pass → REJECT (tier-laundering guard)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "vet-ma3-resolution-vs-presence",
+      "area": "vet",
+      "spec": "§6.3.3",
+      "summary": "MA-3 full resolution: dacs1 presence-only ACCEPTS a present-but-failing verifiedBy; vetMatch REJECTS it",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "dacs1Presence": true,
+        "vetResolved": false
+      }
+    },
+    {
+      "id": "vet-ma3-verified-accept",
+      "area": "vet",
+      "spec": "§6.3.3",
+      "summary": "MA-3: selector set + presentedBy resolves to pass → ACCEPT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "vet-findclaim-decision",
+      "area": "vet",
+      "spec": "§6.3.3",
+      "summary": "find_claim: a verificationRequired claim whose verifiedBy resolves to indeterminate is treated as absent",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": false
+    },
+    {
+      "id": "neg-band-inclusive",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "price-band [bandCenter×(100−minPct)/100, ×(100+maxPct)/100] inclusive; edges accept, just-outside reject (CD-1 full precision)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "inBand": true,
+        "lowerEdge": true,
+        "upperEdge": true,
+        "below": false,
+        "above": false
+      }
+    },
+    {
+      "id": "neg-currency-mismatch",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "a cross-currency agreement is rejected before any amount comparison",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "ok": false,
+        "failedAt": "currency"
+      }
+    },
+    {
+      "id": "neg-rail-reject",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "terms.rail not in listing.acceptedRails → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "ok": false,
+        "failedAt": "rail"
+      }
+    },
+    {
+      "id": "neg-deliverable",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "deliverable conformance: deliverableType + canonical hash + schemaUrl must all match the listing offering.deliverable",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "conforming": true,
+        "typeMismatch": false,
+        "hashMismatch": false,
+        "schemaMismatch": false
+      }
+    },
+    {
+      "id": "neg-deadline-committedat",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "deadline ≤ committedAt + deadlineSecAfterCommit, measured against the ANCHORED committedAt (not generatedAt)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "within": true,
+        "beyond": false
+      }
+    },
+    {
+      "id": "neg-notafter",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "listing.validity.notAfter < committedAt → REJECT (listing expired between read and commit)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "ok": false,
+        "failedAt": "notAfter"
+      }
+    },
+    {
+      "id": "neg-pattern-mismatch",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "derivedFromPattern != listing pipeline pattern → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "ok": false,
+        "failedAt": "pattern"
+      }
+    },
+    {
+      "id": "neg-ps3-fixed-over-negotiable",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "PS-3: a fixed-price agreement over negotiable pricing MUST equal bandCenter exactly, not merely lie within the band",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "exact": true,
+        "inBandNotExact": false
+      }
+    },
+    {
+      "id": "neg-priceanchor-absent-ok",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "priceAnchor absent MUST NOT cause rejection — an otherwise-valid agreement is accepted",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": true
+    },
+    {
+      "id": "neg-priceanchor-present",
+      "area": "negotiate",
+      "spec": "§8.5.2",
+      "summary": "when present, priceAnchor.price MUST be CD-1 canonical + attestationRef.contentHash present; non-canonical → REJECT",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "valid": true,
+        "nonCanonical": false
+      }
+    },
+    {
+      "id": "neg-price-noncanonical",
+      "area": "negotiate",
+      "spec": "§8.5.1",
+      "summary": "terms.price.amount MUST be CD-1 canonical — a non-canonical amount (\"100.00\") is rejected before comparison, not normalized-then-accepted (consistent with the §14.4 settlement lane)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "ok": false,
+        "failedAt": "price"
       }
     },
     {

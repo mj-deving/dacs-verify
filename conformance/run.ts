@@ -39,9 +39,27 @@ import {
   nativeAddressPerSpec,
   validateListingStructure,
   type IdentityBundle,
+  type BundleClaim,
   type BundleRequirement,
   type ClaimReference,
 } from "../src/dacs1.ts";
+import {
+  classifyVetOutcome,
+  mayRetry,
+  validateMethodContract,
+  vetAttestationAddress,
+  vetMatch,
+  VET_DECISIONS,
+  type VerifyResult,
+  type VerifyResultResolver,
+} from "../src/dacs2/vet.ts";
+import {
+  deliverableSpecHash,
+  negotiableBand,
+  validateAgreement,
+  type AgreementDocument,
+  type ListingForValidation,
+} from "../src/dacs3/agreement.ts";
 import {
   verifyDisputeFlow,
   verifyTranscriptDisclosure,
@@ -262,6 +280,178 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   golden["addressing"] = { logical, native };
 }
 
+// ── §14.2 — DACS-2 Vet: method contract (CM-1..5), retry (VP-R1..4), match (MA-1..3) ──
+{
+  rec("vet-cm4-classify", "vet", "§7.5.1", "CM-4: the four §7.5.1 outcomes classify; an unknown decision throws",
+    { classified: ["pass", "fail", "indeterminate", "error"].map(classifyVetOutcome), unknown: throwResult(() => classifyVetOutcome("maybe"), /§7\.5\.1/) },
+    { classified: ["pass", "fail", "indeterminate", "error"], unknown: "throws" });
+
+  rec("vet-cm5-method-contract", "vet", "§7.5", "CM-5: VerifyResult.method must equal the producing kind — match accepted, mismatch rejected",
+    {
+      match: validateMethodContract({ decision: "pass", method: "vc-presentation" }, "vc-presentation").ok,
+      mismatch: validateMethodContract({ decision: "pass", method: "oauth-oidc" }, "vc-presentation").ok,
+    },
+    { match: true, mismatch: false });
+
+  rec("vet-cm1-input-shape", "vet", "§7.5", "CM-1/CM-3: a VerifyResult missing/invalid decision or method is rejected, never silently passed",
+    {
+      noMethod: validateMethodContract({ decision: "pass" }).ok,
+      noDecision: validateMethodContract({ method: "vc-presentation" }).ok,
+      badDecision: validateMethodContract({ decision: "maybe", method: "vc-presentation" } as unknown as Partial<VerifyResult>).ok,
+      wellFormed: validateMethodContract({ decision: "indeterminate", method: "vc-presentation" }).ok,
+    },
+    { noMethod: false, noDecision: false, badDecision: false, wellFormed: true });
+
+  rec("vet-cm2-address", "vet", "§7.3.1", "CM-2: attestation anchors at dacs2:{jobId}:{scheme}:{identifier}:v{recipeVersion} (scheme lowercased per CF-2)",
+    vetAttestationAddress("job-abc", "LEI", "984500ABCDEF12345678", 3), "dacs2:job-abc:lei:984500ABCDEF12345678:v3");
+
+  rec("vet-vpr1-transient-retry", "vet", "§7.6.1", "VP-R1: decision=error + retryClass=transient + attempts<budget → retry",
+    mayRetry({ decision: "error", retryClass: "transient", attempts: 1, retryBudget: 3 }), true);
+  rec("vet-vpr1-budget-exhausted", "vet", "§7.6.1", "VP-R1: decision=error + transient at attempts==budget → no retry",
+    mayRetry({ decision: "error", retryClass: "transient", attempts: 3, retryBudget: 3 }), false);
+  rec("vet-vpr3-permanent-noretry", "vet", "§7.6.1", "VP-R3: decision=error + retryClass=permanent → never retry within session",
+    mayRetry({ decision: "error", retryClass: "permanent", attempts: 0, retryBudget: 3 }), false);
+  rec("vet-vpr4-indeterminate-noretry", "vet", "§7.6.1", "VP-R4: indeterminate + retryOnIndeterminate unset (default false) → no retry",
+    mayRetry({ decision: "indeterminate", attempts: 0, retryBudget: 3 }), false);
+  rec("vet-vpr4-indeterminate-flag-retry", "vet", "§7.6.1", "VP-R4: indeterminate + retryOnIndeterminate=true → retry",
+    mayRetry({ decision: "indeterminate", retryOnIndeterminate: true, attempts: 0, retryBudget: 3 }), true);
+  rec("vet-terminal-noretry", "vet", "§7.6.1", "a terminal authority answer (pass/fail) is never retried",
+    { pass: mayRetry({ decision: "pass", attempts: 0 }), fail: mayRetry({ decision: "fail", attempts: 0 }) }, { pass: false, fail: false });
+
+  // MA-1..3 matching with full verifiedBy → resolved-decision check.
+  const NOW = 1_900_000_000_000;
+  const vb = (locator: string): NonNullable<BundleClaim["verifiedBy"]> => ({ anchor: { kind: "storage-program", locator }, contentHash: "h", recipeVersion: 1 });
+  const resolveVR: VerifyResultResolver = (v) =>
+    v.anchor.locator === "stor-fail" ? { decision: "fail", method: "vc-presentation" }
+      : v.anchor.locator === "stor-indet" ? { decision: "indeterminate", method: "vc-presentation" }
+        : { decision: "pass", method: "vc-presentation" };
+  const mk = (claims: BundleClaim[], presentedBy?: string): IdentityBundle => ({
+    bundleVersion: "1", presentedBy: presentedBy ?? claims[0]!.ref, presentedAt: NOW, claims, presentation: { kind: "siwd" },
+  });
+  const reqLei: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }] };
+  const reqOneOf: BundleRequirement = { requirementVersion: "1", required: [], oneOf: [[{ scheme: "lei", verificationRequired: true }, { scheme: "finra-crd", verificationRequired: true }]] };
+  const reqPrimary: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }], primaryClaimSelector: "lei" };
+
+  rec("vet-ma1-required-missing", "vet", "§6.3.3", "MA-1: a missing required claim → REJECT",
+    vetMatch(mk([{ ref: "did:demos:x", verifiedBy: vb("stor-pass") }]), reqLei, resolveVR, NOW).ok, false);
+  rec("vet-ma1-oneof", "vet", "§6.3.3", "MA-1: oneOf satisfied by any member → continue; satisfied by none → REJECT",
+    {
+      satisfied: vetMatch(mk([{ ref: "finra-crd:12345", verifiedBy: vb("stor-pass") }]), reqOneOf, resolveVR, NOW).ok,
+      unsatisfied: vetMatch(mk([{ ref: "did:demos:x", verifiedBy: vb("stor-pass") }]), reqOneOf, resolveVR, NOW).ok,
+    },
+    { satisfied: true, unsatisfied: false });
+  rec("vet-ma2-scheme-mismatch", "vet", "§6.3.3", "MA-2: presentedBy scheme != primaryClaimSelector → REJECT",
+    vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-pass") }, { ref: "did:demos:k", verifiedBy: vb("stor-pass") }], "did:demos:k"), reqPrimary, resolveVR, NOW).ok, false);
+
+  const ma3Unverified = mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-fail") }, { ref: "lei:529900T8BM49AABBCC11", verifiedBy: vb("stor-pass") }], "lei:984500ABCDEF12345678");
+  rec("vet-ma3-unverified-reject", "vet", "§6.3.3", "MA-3: selector set + presentedBy verifiedBy resolves decision!=pass → REJECT (tier-laundering guard)",
+    vetMatch(ma3Unverified, reqPrimary, resolveVR, NOW).ok, false);
+  rec("vet-ma3-resolution-vs-presence", "vet", "§6.3.3", "MA-3 full resolution: dacs1 presence-only ACCEPTS a present-but-failing verifiedBy; vetMatch REJECTS it",
+    { dacs1Presence: matchRequirement(ma3Unverified, reqPrimary, NOW).ok, vetResolved: vetMatch(ma3Unverified, reqPrimary, resolveVR, NOW).ok },
+    { dacs1Presence: true, vetResolved: false });
+  rec("vet-ma3-verified-accept", "vet", "§6.3.3", "MA-3: selector set + presentedBy resolves to pass → ACCEPT",
+    vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-pass") }], "lei:984500ABCDEF12345678"), reqPrimary, resolveVR, NOW).ok, true);
+  rec("vet-findclaim-decision", "vet", "§6.3.3", "find_claim: a verificationRequired claim whose verifiedBy resolves to indeterminate is treated as absent",
+    vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-indet") }]), reqLei, resolveVR, NOW).ok, false);
+
+  golden["vet"] = { decisions: VET_DECISIONS, address: vetAttestationAddress("job-abc", "LEI", "984500ABCDEF12345678", 3), retryBudgetDefault: 3 };
+}
+
+// ── §14.3 — DACS-3 Negotiate: §8.5.2 listing-conformance validation ──────────
+{
+  const COMMITTED_AT = 1_900_000_000_000;
+  const deliverableSpec = { deliverableType: "attested-payload", verificationMethod: "http-attestation", schemaUrl: "https://schemas.example/x.json" };
+  const dHash = deliverableSpecHash(deliverableSpec);
+  const baseListing: ListingForValidation = {
+    pricing: { kind: "negotiable", bandCenter: { amount: "100", currency: "USDC" }, minPct: 10, maxPct: 20 },
+    acceptedRails: ["erc20-usdc-base", "spl-usdc"],
+    offering: { deliverable: deliverableSpec },
+    pattern: "rfq",
+    terms: { deadlineSecAfterCommit: 86400 },
+    validity: { notBefore: COMMITTED_AT - 100_000, notAfter: COMMITTED_AT + 1_000_000 },
+  };
+  const okAgreement: AgreementDocument = {
+    derivedFromPattern: "rfq",
+    terms: {
+      price: { amount: "95", currency: "USDC" },
+      rail: "erc20-usdc-base",
+      deliverable: { deliverableType: "attested-payload", hash: dHash, schemaUrl: "https://schemas.example/x.json" },
+      deadline: COMMITTED_AT + 1000,
+    },
+  };
+  const atPrice = (amount: string): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, price: { amount, currency: "USDC" } } });
+  const failedAt = (a: AgreementDocument, l: ListingForValidation): unknown => { const r = validateAgreement(a, l, COMMITTED_AT); return { ok: r.ok, failedAt: r.ok ? null : r.failedAt }; };
+
+  rec("neg-band-inclusive", "negotiate", "§8.5.2", "price-band [bandCenter×(100−minPct)/100, ×(100+maxPct)/100] inclusive; edges accept, just-outside reject (CD-1 full precision)",
+    {
+      inBand: validateAgreement(atPrice("95"), baseListing, COMMITTED_AT).ok,
+      lowerEdge: validateAgreement(atPrice("90"), baseListing, COMMITTED_AT).ok,
+      upperEdge: validateAgreement(atPrice("120"), baseListing, COMMITTED_AT).ok,
+      below: validateAgreement(atPrice("89.999"), baseListing, COMMITTED_AT).ok,
+      above: validateAgreement(atPrice("120.001"), baseListing, COMMITTED_AT).ok,
+    },
+    { inBand: true, lowerEdge: true, upperEdge: true, below: false, above: false });
+
+  rec("neg-currency-mismatch", "negotiate", "§8.5.2", "a cross-currency agreement is rejected before any amount comparison",
+    failedAt({ ...okAgreement, terms: { ...okAgreement.terms, price: { amount: "95", currency: "EURC" } } }, baseListing),
+    { ok: false, failedAt: "currency" });
+
+  rec("neg-rail-reject", "negotiate", "§8.5.2", "terms.rail not in listing.acceptedRails → REJECT",
+    failedAt({ ...okAgreement, terms: { ...okAgreement.terms, rail: "wire-transfer" } }, baseListing),
+    { ok: false, failedAt: "rail" });
+
+  const delivBad = (deliverable: AgreementDocument["terms"]["deliverable"]): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, deliverable } });
+  rec("neg-deliverable", "negotiate", "§8.5.2", "deliverable conformance: deliverableType + canonical hash + schemaUrl must all match the listing offering.deliverable",
+    {
+      conforming: validateAgreement(okAgreement, baseListing, COMMITTED_AT).ok,
+      typeMismatch: validateAgreement(delivBad({ deliverableType: "entitlement", hash: dHash, schemaUrl: "https://schemas.example/x.json" }), baseListing, COMMITTED_AT).ok,
+      hashMismatch: validateAgreement(delivBad({ deliverableType: "attested-payload", hash: "deadbeef", schemaUrl: "https://schemas.example/x.json" }), baseListing, COMMITTED_AT).ok,
+      schemaMismatch: validateAgreement(delivBad({ deliverableType: "attested-payload", hash: dHash, schemaUrl: "https://other.example/y.json" }), baseListing, COMMITTED_AT).ok,
+    },
+    { conforming: true, typeMismatch: false, hashMismatch: false, schemaMismatch: false });
+
+  const deadlineAgreement = (deadline: number): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, deadline } });
+  rec("neg-deadline-committedat", "negotiate", "§8.5.2", "deadline ≤ committedAt + deadlineSecAfterCommit, measured against the ANCHORED committedAt (not generatedAt)",
+    {
+      within: validateAgreement(deadlineAgreement(COMMITTED_AT + 86400 * 1000), baseListing, COMMITTED_AT).ok,
+      beyond: validateAgreement(deadlineAgreement(COMMITTED_AT + 86400 * 1000 + 1), baseListing, COMMITTED_AT).ok,
+    },
+    { within: true, beyond: false });
+
+  rec("neg-notafter", "negotiate", "§8.5.2", "listing.validity.notAfter < committedAt → REJECT (listing expired between read and commit)",
+    failedAt(okAgreement, { ...baseListing, validity: { notBefore: COMMITTED_AT - 100_000, notAfter: COMMITTED_AT - 1 } }),
+    { ok: false, failedAt: "notAfter" });
+
+  rec("neg-pattern-mismatch", "negotiate", "§8.5.2", "derivedFromPattern != listing pipeline pattern → REJECT",
+    failedAt({ ...okAgreement, derivedFromPattern: "sealed-envelope" }, baseListing),
+    { ok: false, failedAt: "pattern" });
+
+  const fixedOverNeg: ListingForValidation = { ...baseListing, pattern: "fixed-price" };
+  rec("neg-ps3-fixed-over-negotiable", "negotiate", "§8.5.2", "PS-3: a fixed-price agreement over negotiable pricing MUST equal bandCenter exactly, not merely lie within the band",
+    {
+      exact: validateAgreement({ ...atPrice("100"), derivedFromPattern: "fixed-price" }, fixedOverNeg, COMMITTED_AT).ok,
+      inBandNotExact: validateAgreement({ ...atPrice("95"), derivedFromPattern: "fixed-price" }, fixedOverNeg, COMMITTED_AT).ok,
+    },
+    { exact: true, inBandNotExact: false });
+
+  rec("neg-priceanchor-absent-ok", "negotiate", "§8.5.2", "priceAnchor absent MUST NOT cause rejection — an otherwise-valid agreement is accepted",
+    validateAgreement(okAgreement, baseListing, COMMITTED_AT).ok, true);
+
+  const withAnchor = (price: string): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, priceAnchor: { price, attestationRef: { contentHash: "abc123" } } } });
+  rec("neg-priceanchor-present", "negotiate", "§8.5.2", "when present, priceAnchor.price MUST be CD-1 canonical + attestationRef.contentHash present; non-canonical → REJECT",
+    {
+      valid: validateAgreement(withAnchor("100"), baseListing, COMMITTED_AT).ok,
+      nonCanonical: validateAgreement(withAnchor("100.00"), baseListing, COMMITTED_AT).ok,
+    },
+    { valid: true, nonCanonical: false });
+
+  rec("neg-price-noncanonical", "negotiate", "§8.5.1", "terms.price.amount MUST be CD-1 canonical — a non-canonical amount (\"100.00\") is rejected before comparison, not normalized-then-accepted (consistent with the §14.4 settlement lane)",
+    failedAt(atPrice("100.00"), baseListing),
+    { ok: false, failedAt: "price" });
+
+  golden["negotiate"] = { deliverableHash: dHash, band: negotiableBand("100", 10, 20) };
+}
+
 // ── §10.4 — DACS-5 AttestationBundle verification ───────────────────────────
 {
   const resolve = (claim: ClaimReference): Uint8Array | undefined => bundle0004Keys[claim];
@@ -405,7 +595,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   // → terminal `failed-counterparty` on window expiry; covered by the §14.5 verify-st-asymmetric-* vectors). A dispute
   // over the window-expired terminal `failed-counterparty` uses a standard remedy — there is no spec correction path to
   // assert as golden. Re-aligning the DACS-X prototype's `correction-ordered` remedy + the htlc9 fixture outcome is
-  // tracked for #99 convergence (bead DACS-standard-snt). ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF remains exercised by
+  // tracked for #99 convergence. ATTESTATION_BUNDLE_HTLC9_REVEAL_TX_REF remains exercised by
   // the bundle-htlc9-pass vector (structural bundle verification + reveal-txRef presence).
 
   golden["dispute"] = {
@@ -1001,7 +1191,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 24 primitives + 1 bundle-area (4 checks) + 17 dispute/disclosure (8 dispute + 9 disclosure) + 30 settlement + 41 verify + 17 vet (CM-1..5 / VP-R1..4 / MA-1..3) + 11 negotiate (§8.5.2); byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),

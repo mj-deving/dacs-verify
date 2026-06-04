@@ -289,7 +289,7 @@ export function buildSessionBundleFixtures(): {
   // §10.5.1 mixed-role fixture: the scored claim (VERIFY_BUYER_CLAIM) genuinely plays the SELLER in THIS job — it is
   // the seller-role party AND the seller-anchored signer (roleClaims swap → signed by VERIFY_BUYER_CLAIM with its own
   // key). A REAL signed bundle that PASSES verifyBundle, not a mutated-signature copy: the per-job role-binding
-  // regression must rest on honest conformance evidence (autoreview r30 round-4). aborted-by-self is non-terminal-
+  // regression must rest on honest conformance evidence. aborted-by-self is non-terminal-
   // required (§10.4.1) so the single anchorer signature suffices.
   const mixedRoleSellerBundle = makeBundle({
     jobId: VERIFY_MIXEDROLE_JOB_ID,

@@ -14,6 +14,23 @@
     "logical": "dacs1:lei:984500ABCDEF12345678:fx-rfq-eur-usd:v1",
     "native": "stor-ac8d9a32ced4223d0022fba37beb05754c7c695e1599175178a543ff72302f96"
   },
+  "vet": {
+    "decisions": [
+      "pass",
+      "fail",
+      "indeterminate",
+      "error"
+    ],
+    "address": "dacs2:job-abc:lei:984500ABCDEF12345678:v3",
+    "retryBudgetDefault": 3
+  },
+  "negotiate": {
+    "deliverableHash": "d5e3f3c6aa8842293f84fede12db561fb2625621c9c15eaa654c318d1ad66599",
+    "band": {
+      "lower": "90",
+      "upper": "120"
+    }
+  },
   "bundle": {
     "status": "golden — reference-verifier-accepted (verifyBundle) + byte-stable",
     "fixture": "conformance/fixtures/attestation-bundle-0004.json",
