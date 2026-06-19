@@ -346,7 +346,7 @@ export function deriveReputation(
   // a verified-but-relabelled bundle could otherwise misname the party's role, miss its self_copy, and perspective_flip its
   // own outcome — inverting abort attribution. So role comes from `resolvePartyRole`, not the bundle. A job whose role the
   // consumer does not supply (undefined) is not in the audited set → skipped. (`anchoredByRole` is trusted here per the
-  // §10.4.2 contract that it matches the role-derived anchor address, validated when fetched two-sided; ISA steward-Q.)
+  // §10.4.2 contract that it matches the role-derived anchor address, validated when fetched two-sided.)
   // WINDOW: inclusive `finalisedAt` filter. SCOPED: every bundle the party is a PARTY to (NOT only the ones it anchored —
   // that pre-R4-B narrowing was the defect). Two-sided anchoring (§10.4.2) can place TWO copies of one jobId in the input,
   // each recording `outcome` from ITS anchorer's perspective; the per-jobId reconciliation below collapses to one

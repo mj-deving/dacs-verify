@@ -262,8 +262,8 @@ export function verifySettlementEvidence(input: {
         // evidence (enforced above). The spec does NOT forbid paymentTxRefs/paymentAmount/paymentFee on delivery, and
         // SIG-5 "preserve-unknown" mandates a verifier MAY ignore the meaning of inapplicable/unknown fields but MUST
         // NOT reject on their presence. So this §14 conformance verifier does not reject them — the consumer dispatches
-        // on `phase`. (Whether the spec SHOULD close delivery-evidence shape is a steward-facing question, not a verifier
-        // bug; see ISA Decisions / findings — escalate, don't unilaterally out-strict the reference.)
+        // on `phase`. Whether the spec should close delivery-evidence shape is a steward-facing question;
+        // this verifier should not unilaterally out-strict the reference.
       }
     }
 
