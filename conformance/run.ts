@@ -1082,6 +1082,34 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       },
     }),
   });
+  // pay-x402 (§9.5.7): x402 settles a gasless USDC transfer on its settlement chain (e.g. Base), so the record is
+  // chain-verifiable via the settlement tx exactly like the evm rail — block-depth finality, asset unconstrained by
+  // RD-5 (only network.kind == "x402-resource" is pinned). USDC/erc20-on-Base here.
+  const x402PaymentCase = () => paymentCase({
+    evidence: {
+      phase: "pay-x402",
+      settlementFinality: { model: "block-depth", finalityBlocks: 1, finalityObservedAt: 1_780_014_503_000 },
+      paymentTxRefs: [{ rail: "base-usdc-x402", txHash: "base:0xx402settle0001", kind: "payment" }],
+    },
+    result: {
+      txRefs: [{ rail: "base-usdc-x402", txHash: "base:0xx402settle0001", kind: "payment" }],
+    },
+    paymentInput: (input) => ({
+      ...input,
+      rail: {
+        railVersion: 1,
+        railId: "base-usdc-x402",
+        railType: "x402",
+        asset: { kind: "erc20", chainId: 8453, contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6 },
+        network: { kind: "x402-resource", resourceBaseUrl: "https://pay.example/x402/resource" },
+        phaseHandler: "pay-x402",
+        parameters: { finalityBlocks: 1 },
+        availability: "live",
+        governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+        signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-x402-rail-signature" },
+      },
+    }),
+  });
   const decide = (input: { result: PhaseHandlerResult; evidence: SettlementEvidence; expectedOrchestrator?: ClaimReference; paymentInput?: PaymentPhaseInput; resolveKey?: (claim: ClaimReference) => Uint8Array | null | undefined }): string =>
     verifySettlementEvidence({
       result: input.result,
@@ -1093,6 +1121,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
 
   rec("settlement-payment-pass", "settlement", "§14.4", "pay-evm-erc20 success evidence passes PC-1..PC-6 + dacs-4-evidence signature",
     decide(settlementPayment), "pass");
+  rec("settlement-x402-pass", "settlement", "§9.5.7", "pay-x402 success evidence (gasless USDC on Base, block-depth finality, chain-verifiable like the evm rail) passes PC-1..PC-6 + dacs-4-evidence signature",
+    decide(x402PaymentCase()), "pass");
   rec("settlement-delivery-pass", "settlement", "§14.4", "deliver-storage-program success evidence passes with deliverable anchor and no settlementFinality",
     decide(settlementDelivery), "pass");
 
@@ -1662,7 +1692,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 36 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 37 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
