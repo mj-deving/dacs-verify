@@ -130,6 +130,51 @@ export function paymentEvidenceAddress(jobId: string, railId: string, phaseIndex
   return `dacs4:payment:${jobId}:${cf4Encode(railId)}:${phaseIndex}${resolved ? ":resolved" : ""}`;
 }
 
+export type SettlementTxObligation = {
+  settlementTxId: string;
+  jobId: string;
+  phaseIndex: number;
+};
+
+export type SettlementTxReuseConflict = {
+  settlementTxId: string;
+  first: Omit<SettlementTxObligation, "settlementTxId">;
+  second: Omit<SettlementTxObligation, "settlementTxId">;
+};
+
+export type SettlementTxUniquenessResult =
+  | { decision: "pass"; consumed: SettlementTxObligation[] }
+  | { decision: "fail"; conflict: SettlementTxReuseConflict; consumed: SettlementTxObligation[] };
+
+export function settlementTxId(tx: ChainTxRef): string {
+  return `${cf4Encode(tx.rail)}:${cf4Encode(tx.kind ?? "")}:${cf4Encode(tx.txHash)}`;
+}
+
+export function verifySettlementTxUniqueness(evidenceSet: readonly SettlementEvidence[]): SettlementTxUniquenessResult {
+  const consumed = new Map<string, Omit<SettlementTxObligation, "settlementTxId">>();
+  const consumedList: SettlementTxObligation[] = [];
+
+  for (const evidence of evidenceSet) {
+    if (!PAYMENT_PHASE_TYPES.has(evidence.phase as PaymentPhaseType)) continue;
+    if (evidence.outcome !== "success") continue;
+    for (const tx of evidence.paymentTxRefs ?? []) {
+      const id = settlementTxId(tx);
+      const next = { jobId: evidence.jobId, phaseIndex: evidence.phaseIndex };
+      const prior = consumed.get(id);
+      if (prior === undefined) {
+        consumed.set(id, next);
+        consumedList.push({ settlementTxId: id, ...next });
+        continue;
+      }
+      if (prior.jobId !== next.jobId || prior.phaseIndex !== next.phaseIndex) {
+        return { decision: "fail", conflict: { settlementTxId: id, first: prior, second: next }, consumed: consumedList };
+      }
+    }
+  }
+
+  return { decision: "pass", consumed: consumedList };
+}
+
 export function currencyResolves(amount: PriceTerm, asset: AssetSpec): boolean {
   switch (asset.kind) {
     case "erc20":

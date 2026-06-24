@@ -38,11 +38,11 @@ The load-bearing design point: **arbitrator legitimacy binds at *agreement* time
 ## Run
 
 ```bash
-bun test                                # foundation + DACS-5 bundle + DACS-X dispute + settlement/verify lanes
-bun conformance/run.ts                  # 186 byte-stable golden conformance vectors
-bun examples/attestation-bundle-0004.ts # emit the full §10.4 AttestationBundle fixture (DACS-VERIFY-0004)
-bun examples/dispute-scenario.ts        # §10.4.3 divergent-bundle dispute → arbitrated → reputation reweighted
-bun run typecheck                       # strict tsc --noEmit, clean
+bun test                          # 223 tests
+bun examples/attestation-bundle-0004.ts
+bun examples/dispute-scenario.ts  # end-to-end §10.4.3 dispute → arbitrated → reputation reweighted; emits vectors
+bun conformance/run.ts            # 191/191 golden conformance checks
+bunx tsc --noEmit                 # strict typecheck
 ```
 
 `conformance/` is a byte-stable, reference-verifier-accepted vector set (`MANIFEST.json` + `vectors/golden.json`) — every case is emitted deterministically and re-checked against this verifier, so two conformant implementations cannot disagree on the pinned outputs. The §10.4 dispute/disclosure cases pin the full `DACS-VERIFY-0004` AttestationBundle fixture (and a divergent seller-side fixture for the §10.4.3(d) two-sided case).

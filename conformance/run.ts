@@ -105,7 +105,9 @@ import {
 import {
   evidenceHash,
   paymentEvidenceAddress,
+  settlementTxId,
   verifySettlementEvidence,
+  verifySettlementTxUniqueness,
   type PaymentPhaseInput,
   type PhaseHandlerResult,
   type RailDefinition,
@@ -1169,6 +1171,29 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       decision: "pass",
     });
 
+  const sb2Base = paymentCase();
+  const sb2CrossJob = paymentCase({ evidence: { jobId: "DACS-VERIFY-SETTLE-0002" } });
+  const sb2CrossPhase = paymentCase({ evidence: { phaseIndex: 1 } });
+  rec("settlement-sb2-duplicate-txid-cross-job-fail", "settlement", "§9.5.8 SB-2", "consumer-scoped SB-2: one settlement-tx-id counted under two jobIds → FAIL",
+    verifySettlementTxUniqueness([sb2Base.evidence, sb2CrossJob.evidence]), {
+      decision: "fail",
+      conflict: {
+        settlementTxId: settlementTxId(sb2Base.evidence.paymentTxRefs![0]!),
+        first: { jobId: sb2Base.evidence.jobId, phaseIndex: sb2Base.evidence.phaseIndex },
+        second: { jobId: sb2CrossJob.evidence.jobId, phaseIndex: sb2CrossJob.evidence.phaseIndex },
+      },
+      consumed: [{ settlementTxId: settlementTxId(sb2Base.evidence.paymentTxRefs![0]!), jobId: sb2Base.evidence.jobId, phaseIndex: sb2Base.evidence.phaseIndex }],
+    });
+  rec("settlement-sb2-same-job-cross-phase-fail", "settlement", "§9.5.8 SB-2", "consumer-scoped SB-2: one settlement-tx-id counted under two phaseIndex values for the same job → FAIL",
+    verifySettlementTxUniqueness([sb2Base.evidence, sb2CrossPhase.evidence]).decision, "fail");
+  rec("settlement-sb2-same-obligation-idempotent-pass", "settlement", "§9.5.8 SB-2", "consumer-scoped SB-2: repeated evidence for the same (settlement-tx-id, jobId, phaseIndex) is idempotent → PASS",
+    verifySettlementTxUniqueness([sb2Base.evidence, sb2Base.evidence]), {
+      decision: "pass",
+      consumed: [{ settlementTxId: settlementTxId(sb2Base.evidence.paymentTxRefs![0]!), jobId: sb2Base.evidence.jobId, phaseIndex: sb2Base.evidence.phaseIndex }],
+    });
+  rec("settlement-sb2-separate-consumer-views-pass", "settlement", "§9.5.8 SB-2", "SB-2 scope is the consumer's own reconciliation set; separate one-record views each pass",
+    [verifySettlementTxUniqueness([sb2Base.evidence]).decision, verifySettlementTxUniqueness([sb2CrossJob.evidence]).decision], ["pass", "pass"]);
+
   rec("settlement-attestationref-hash-mismatch-fail", "settlement", "§9.5.1 PC-3", "result.attestationRef contentHash not equal evidenceHash(evidence) → FAIL",
     decide(paymentCase({ refreshHash: false, evidence: { paymentAmount: { amount: "6", currency: "USDC" } } })), "fail");
 
@@ -1289,6 +1314,10 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       okTrueWithErrorClass: "fail",
       okFalseNoErrorClass: "fail",
       wrongAnchor: "fail",
+      sb2DuplicateTxidCrossJob: "fail",
+      sb2SameJobCrossPhase: "fail",
+      sb2SameObligationIdempotent: "pass",
+      sb2SeparateConsumerViews: "pass",
       attestationRefHashMismatch: "fail",
       failureNoReason: "fail",
       wrongSignerKey: "fail",
@@ -1692,7 +1721,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 37 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 41 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),

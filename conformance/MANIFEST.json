@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "187 vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 37 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.",
+    "golden": "191 vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 41 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -1175,6 +1175,74 @@
         "address": "dacs4:payment:DACS-VERIFY-SETTLE-0001:evm-erc20%3A1%3AUSDC:0",
         "decision": "pass"
       }
+    },
+    {
+      "id": "settlement-sb2-duplicate-txid-cross-job-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-2",
+      "summary": "consumer-scoped SB-2: one settlement-tx-id counted under two jobIds → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "decision": "fail",
+        "conflict": {
+          "settlementTxId": "polygon-amoy-usdc:payment:polygon-amoy%3A0xsettle0001",
+          "first": {
+            "jobId": "DACS-VERIFY-SETTLE-0001",
+            "phaseIndex": 0
+          },
+          "second": {
+            "jobId": "DACS-VERIFY-SETTLE-0002",
+            "phaseIndex": 0
+          }
+        },
+        "consumed": [
+          {
+            "settlementTxId": "polygon-amoy-usdc:payment:polygon-amoy%3A0xsettle0001",
+            "jobId": "DACS-VERIFY-SETTLE-0001",
+            "phaseIndex": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "settlement-sb2-same-job-cross-phase-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-2",
+      "summary": "consumer-scoped SB-2: one settlement-tx-id counted under two phaseIndex values for the same job → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-sb2-same-obligation-idempotent-pass",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-2",
+      "summary": "consumer-scoped SB-2: repeated evidence for the same (settlement-tx-id, jobId, phaseIndex) is idempotent → PASS",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "decision": "pass",
+        "consumed": [
+          {
+            "settlementTxId": "polygon-amoy-usdc:payment:polygon-amoy%3A0xsettle0001",
+            "jobId": "DACS-VERIFY-SETTLE-0001",
+            "phaseIndex": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "settlement-sb2-separate-consumer-views-pass",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-2",
+      "summary": "SB-2 scope is the consumer's own reconciliation set; separate one-record views each pass",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        "pass",
+        "pass"
+      ]
     },
     {
       "id": "settlement-attestationref-hash-mismatch-fail",

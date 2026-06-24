@@ -3,7 +3,9 @@ import { test, expect } from "bun:test";
 import {
   evidenceHash,
   paymentEvidenceAddress,
+  settlementTxId,
   verifySettlementEvidence,
+  verifySettlementTxUniqueness,
   type PaymentPhaseInput,
   type PhaseHandlerResult,
   type RailDefinition,
@@ -231,6 +233,53 @@ test("same jobId and railId with the wrong phaseIndex anchor fails instead of co
     },
   });
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("SB-2 duplicate settlement-tx-id across two jobIds fails in one consumer view", () => {
+  const first = paymentCase();
+  const second = paymentCase({ evidence: { jobId: "DACS-VERIFY-SETTLE-0002" } });
+
+  expect(verifySettlementTxUniqueness([first.evidence, second.evidence])).toEqual({
+    decision: "fail",
+    conflict: {
+      settlementTxId: settlementTxId(first.evidence.paymentTxRefs![0]!),
+      first: { jobId: first.evidence.jobId, phaseIndex: first.evidence.phaseIndex },
+      second: { jobId: second.evidence.jobId, phaseIndex: second.evidence.phaseIndex },
+    },
+    consumed: [{
+      settlementTxId: settlementTxId(first.evidence.paymentTxRefs![0]!),
+      jobId: first.evidence.jobId,
+      phaseIndex: first.evidence.phaseIndex,
+    }],
+  });
+});
+
+test("SB-2 same settlement-tx-id for the same job across two phases fails", () => {
+  const phase0 = paymentCase();
+  const phase1 = paymentCase({ evidence: { phaseIndex: 1 } });
+
+  expect(verifySettlementTxUniqueness([phase0.evidence, phase1.evidence]).decision).toBe("fail");
+});
+
+test("SB-2 same settlement-tx-id for the same obligation is idempotent", () => {
+  const c = paymentCase();
+
+  expect(verifySettlementTxUniqueness([c.evidence, c.evidence])).toEqual({
+    decision: "pass",
+    consumed: [{
+      settlementTxId: settlementTxId(c.evidence.paymentTxRefs![0]!),
+      jobId: c.evidence.jobId,
+      phaseIndex: c.evidence.phaseIndex,
+    }],
+  });
+});
+
+test("SB-2 uniqueness is scoped to one consumer reconciliation set", () => {
+  const first = paymentCase();
+  const second = paymentCase({ evidence: { jobId: "DACS-VERIFY-SETTLE-0002" } });
+
+  expect(verifySettlementTxUniqueness([first.evidence]).decision).toBe("pass");
+  expect(verifySettlementTxUniqueness([second.evidence]).decision).toBe("pass");
 });
 
 test("attestationRef hash mismatch returns fail", () => {
