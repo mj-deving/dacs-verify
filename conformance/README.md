@@ -6,7 +6,7 @@ An independent, third-party set of executable conformance vectors for DACS v0.1,
 
 Surface labels travel with each vector:
 
-- **GOLDEN (187)** — byte-stable and accepted by this reference verifier: 7 canonicalize, 5 decimal, 5 signing, 16 DACS-1, 2 addressing, 4 §10.4 bundle, 17 dispute/disclosure, 37 settlement, 47 verify, 24 vet, 11 negotiate, and 12 governance checks.
+- **GOLDEN (208)** — byte-stable and accepted by this reference verifier: 7 canonicalize, 5 decimal, 5 signing, 16 DACS-1, 2 addressing, 4 §10.4 bundle, 17 dispute/disclosure, 58 settlement, 47 verify, 24 vet, 11 negotiate, and 12 governance checks.
 - **CANDIDATE (0)** — no current candidate vectors.
 
 ## Why
@@ -16,7 +16,7 @@ The spec's §14 conformance chapter defines conformant behaviour but ships no se
 ## Run
 
 ```sh
-bun conformance/run.ts          # run all 187 vectors → exit non-zero on any failure
+bun conformance/run.ts          # run all 208 vectors → exit non-zero on any failure
 bun conformance/run.ts --emit   # regenerate MANIFEST.json + vectors/golden.json
 ```
 
@@ -32,7 +32,7 @@ Deterministic by construction: every key and signature is derived from a fixed p
 - `bundle`: 4 golden vectors, §10.4 / §10.4.1 AttestationBundle verification.
 - `dispute`: 8 golden vectors, §11.2.1 DACS-X dispute flow with the 4-value decision (`pass`/`fail`/`indeterminate`/`error`). (The former HTLC-9 `correction`-amendment vector was retired — Round-4 R4-A removed the correction amendment and resolves an HTLC-9 asymmetric settlement through the ST-8 `settle-asymmetric` state at the settlement layer; see the §14.5 verify-st-asymmetric-* vectors.)
 - `disclosure`: 9 golden vectors, §8.7 DACS-X arbitrator transcript-disclosure (step 3, DP-1).
-- `settlement`: 37 golden vectors, §14.4 SettlementEvidence verification — PC-1..7 (anchor, attestationRef→evidence hash, outcome classification, currency-resolution, settlementFinality, anchor-pending cross-chain return), per-rail success (incl. `pay-x402` gasless-USDC-on-Base, §9.5.7), HTLC finality parameters, RD-5 railType↔asset/network coherence, §9.5.1/PIPE-5 amount==agreement.terms.price, CD-1/§9.3 amount canonicalisation, and the `dacs-4-evidence` signature.
+- `settlement`: 58 golden vectors, §14.4 SettlementEvidence verification and §9.5.8 SB-1/SB-2 consumer-scoped settlement-tx-id uniqueness — PC-1..7 (anchor, attestationRef→evidence hash, outcome classification, currency-resolution, settlementFinality, anchor-pending cross-chain return), per-rail success (incl. `pay-x402` gasless-USDC-on-Base and coherent provider-receipt fallback, §9.5.7), event/instruction-level settlement-tx-id canonicalisation, rail id/chain/cluster binding, Solana signature-alias rejection, mixed coordinate-family rejection, malformed or incomplete event refs as verifier `fail` / SB-2 `error`, duplicate settlement-tx-id rejection across obligations, same-obligation idempotence, consumer-view scoping, HTLC finality parameters, RD-5 railType↔asset/network coherence, §9.5.1/PIPE-5 amount==agreement.terms.price, CD-1/§9.3 amount canonicalisation, and the `dacs-4-evidence` signature.
 - `verify`: 47 golden vectors, §14.5 DACS-5 Verify — two-sided lookup `stor-{sha256(jobId+"-bundle-"+role)}` (§10.4.2) with jobId binding, §10.4.3(a-d) consumption (one-sided→aborted-by-self per §10.11, unified, divergent — "divergent" is a **consumer verdict, NOT an `outcome` enum value**), the ST-1..8 transition table + state→outcome mapping (§10.3.1, incl. the non-terminal `settle-asymmetric` HTLC-9 open state, ST-8), and reputation derivation (§10.5.1 — two-sided per-jobId reconciliation via `anchoredByRole` with `perspective_flip` of a counterparty-anchored copy per §10.11; `party_fault_denom` excludes `failed-substrate`; null≠zero; rating aggregation with `(rater,jobId,targetRole)` de-duplication; deterministic receipt `windowingBasis` + sorted `bundleRefs`; `observedTransactionalVolume` grouped by currency).
 - `vet`: 24 golden vectors, DACS-2 method contract, retry semantics, MA-1..3 resolution, freshness, oneOf/cross-accumulator precedence, and counterparty-malformed fault attribution.
 - `negotiate`: 11 golden vectors, §8.5.2 listing-conformance checks including CD-1 price validation and negotiable band math.

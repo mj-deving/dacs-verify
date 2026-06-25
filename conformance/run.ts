@@ -105,7 +105,9 @@ import {
 import {
   evidenceHash,
   paymentEvidenceAddress,
+  settlementTxId,
   verifySettlementEvidence,
+  verifySettlementTxUniqueness,
   type PaymentPhaseInput,
   type PhaseHandlerResult,
   type RailDefinition,
@@ -139,6 +141,10 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EMIT = process.argv.includes("--emit");
+const SOLANA_SIGNATURE_64B = "6pc4LiB8KHAPvbUbkozrTcPL5zXspYBdATv5raNDyVbhiKjrKokLb9o111kxTD5KkPVd7UBSCcFcnWFkrJ82Hu6";
+const SOLANA_OTHER_SIGNATURE_64B = "1".repeat(64);
+const SOLANA_SIGNATURE_65B = "Sh7jjzjhHgLUBZApQNSMJTBZF2wHJpdtcmoJRpGgGMEAhPi8i1LHTjp314M1kgJ5kWHLPYy4EEbWwr88YaZzhauA";
+const SOLANA_SIGNATURE_63B = "2KVLLRHLnNndTeGKJBCJ6aPjPRpKmJVEdajqgKtUrxRB8YtPxTuQvWBRUC3i7Pg3SEhvVesrD9SWrjRe86EpsW";
 
 const statusOf = (_area: string): "golden" => "golden";
 const reasonOf = (area: string): string =>
@@ -1089,10 +1095,22 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     evidence: {
       phase: "pay-x402",
       settlementFinality: { model: "block-depth", finalityBlocks: 1, finalityObservedAt: 1_780_014_503_000 },
-      paymentTxRefs: [{ rail: "base-usdc-x402", txHash: "base:0xx402settle0001", kind: "payment" }],
+      paymentTxRefs: [{
+        rail: "base-usdc-x402",
+        txHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        kind: "payment",
+        chainId: 8453,
+        logIndex: 3,
+      }],
     },
     result: {
-      txRefs: [{ rail: "base-usdc-x402", txHash: "base:0xx402settle0001", kind: "payment" }],
+      txRefs: [{
+        rail: "base-usdc-x402",
+        txHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        kind: "payment",
+        chainId: 8453,
+        logIndex: 3,
+      }],
     },
     paymentInput: (input) => ({
       ...input,
@@ -1110,6 +1128,98 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       },
     }),
   });
+  const x402ProviderReceiptPaymentCase = () => {
+    const txRef = { rail: "base-usdc-x402", txHash: "provider-receipt:pay.example:receipt-0001", kind: "provider-receipt" };
+    return paymentCase({
+      evidence: {
+        phase: "pay-x402",
+        settlementFinality: { model: "provider-receipt", finalityObservedAt: 1_780_014_503_000 },
+        paymentTxRefs: [txRef],
+      },
+      result: {
+        txRefs: [txRef],
+      },
+      paymentInput: (input) => ({
+        ...input,
+        rail: {
+          railVersion: 1,
+          railId: "base-usdc-x402",
+          railType: "x402",
+          asset: { kind: "erc20", chainId: 8453, contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6 },
+          network: { kind: "x402-resource", resourceBaseUrl: "https://pay.example/x402/resource" },
+          phaseHandler: "pay-x402",
+          parameters: { finalityBlocks: 1 },
+          availability: "live",
+          governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+          signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-x402-rail-signature" },
+        },
+      }),
+    });
+  };
+  const x402MissingEventCoordinatesCase = () => {
+    const txRef = {
+      rail: "base-usdc-x402",
+      txHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      kind: "payment",
+    };
+    return paymentCase({
+      evidence: {
+        phase: "pay-x402",
+        settlementFinality: { model: "block-depth", finalityBlocks: 1, finalityObservedAt: 1_780_014_504_000 },
+        paymentTxRefs: [txRef],
+      },
+      result: {
+        txRefs: [txRef],
+      },
+      paymentInput: (input) => ({
+        ...input,
+        rail: {
+          railVersion: 1,
+          railId: "base-usdc-x402",
+          railType: "x402",
+          asset: { kind: "erc20", chainId: 8453, contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6 },
+          network: { kind: "x402-resource", resourceBaseUrl: "https://pay.example/x402/resource" },
+          phaseHandler: "pay-x402",
+          parameters: { finalityBlocks: 1 },
+          availability: "live",
+          governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+          signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-x402-rail-signature" },
+        },
+      }),
+    });
+  };
+  const x402BlockDepthReceiptKindCase = () => {
+    const txRef = {
+      rail: "base-usdc-x402",
+      txHash: "provider-receipt:pay.example:receipt-0002",
+      kind: "provider-receipt",
+    };
+    return paymentCase({
+      evidence: {
+        phase: "pay-x402",
+        settlementFinality: { model: "block-depth", finalityBlocks: 1, finalityObservedAt: 1_780_014_504_500 },
+        paymentTxRefs: [txRef],
+      },
+      result: {
+        txRefs: [txRef],
+      },
+      paymentInput: (input) => ({
+        ...input,
+        rail: {
+          railVersion: 1,
+          railId: "base-usdc-x402",
+          railType: "x402",
+          asset: { kind: "erc20", chainId: 8453, contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6 },
+          network: { kind: "x402-resource", resourceBaseUrl: "https://pay.example/x402/resource" },
+          phaseHandler: "pay-x402",
+          parameters: { finalityBlocks: 1 },
+          availability: "live",
+          governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+          signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-x402-rail-signature" },
+        },
+      }),
+    });
+  };
   const decide = (input: { result: PhaseHandlerResult; evidence: SettlementEvidence; expectedOrchestrator?: ClaimReference; paymentInput?: PaymentPhaseInput; resolveKey?: (claim: ClaimReference) => Uint8Array | null | undefined }): string =>
     verifySettlementEvidence({
       result: input.result,
@@ -1123,6 +1233,24 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     decide(settlementPayment), "pass");
   rec("settlement-x402-pass", "settlement", "§9.5.7", "pay-x402 success evidence (gasless USDC on Base, block-depth finality, chain-verifiable like the evm rail) passes PC-1..PC-6 + dacs-4-evidence signature",
     decide(x402PaymentCase()), "pass");
+  rec("settlement-x402-provider-receipt-pass", "settlement", "§9.5.7", "pay-x402 provider-receipt fallback without settlement-chain event coordinates remains accepted",
+    {
+      settlement: decide(x402ProviderReceiptPaymentCase()),
+      uniqueness: verifySettlementTxUniqueness([x402ProviderReceiptPaymentCase().evidence]).decision,
+    },
+    { settlement: "pass", uniqueness: "pass" });
+  rec("settlement-x402-block-depth-missing-event-coordinates-fail", "settlement", "§9.5.8 SB-1/SB-2", "pay-x402 block-depth settlement refs without chainId+logIndex fail instead of falling back to a legacy key",
+    {
+      settlement: decide(x402MissingEventCoordinatesCase()),
+      uniqueness: verifySettlementTxUniqueness([x402MissingEventCoordinatesCase().evidence]).decision,
+    },
+    { settlement: "fail", uniqueness: "error" });
+  rec("settlement-x402-block-depth-provider-receipt-kind-fail", "settlement", "§9.5.8 SB-1/SB-2", "pay-x402 block-depth settlement refs cannot use provider-receipt fallback kind",
+    {
+      settlement: decide(x402BlockDepthReceiptKindCase()),
+      uniqueness: verifySettlementTxUniqueness([x402BlockDepthReceiptKindCase().evidence]).decision,
+    },
+    { settlement: "fail", uniqueness: "error" });
   rec("settlement-delivery-pass", "settlement", "§14.4", "deliver-storage-program success evidence passes with deliverable anchor and no settlementFinality",
     decide(settlementDelivery), "pass");
 
@@ -1157,6 +1285,12 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     decide(paymentCase({ result: { attestationRef: { ...settlementPayment.result.attestationRef!, id: "dacs4:payment:wrong:rail" } } })), "fail");
 
   const colonRail = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "evm-erc20:1:USDC", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "evm-erc20:1:USDC", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
     paymentInput: (input) => ({ ...input, rail: { ...input.rail, railId: "evm-erc20:1:USDC" } }),
   });
   rec("cf4-dacs4-payment-address", "settlement", "§6.3.4 CF-4", "dacs4 payment evidence address encodes a colon-bearing railId while phaseIndex stays structural",
@@ -1168,6 +1302,112 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       address: paymentEvidenceAddress(colonRail.evidence.jobId, "evm-erc20:1:USDC", colonRail.evidence.phaseIndex),
       decision: "pass",
     });
+
+  const sb2Base = paymentCase();
+  const sb2CrossJob = paymentCase({ evidence: { jobId: "DACS-VERIFY-SETTLE-0002" } });
+  const sb2CrossPhase = paymentCase({ evidence: { phaseIndex: 1 } });
+  rec("settlement-sb1-evm-event-txid-normalisation", "settlement", "§9.5.8 SB-1", "EVM settlement-tx-id is event-level and normalises optional 0x / uppercase spelling",
+    [
+      settlementTxId({ rail: "polygon-amoy-usdc", txHash: "0xABCDEF0000000000000000000000000000000000000000000000000000000001", kind: "payment", chainId: 80002, logIndex: 7 }),
+      settlementTxId({ rail: "polygon-amoy-usdc", txHash: "abcdef0000000000000000000000000000000000000000000000000000000001", kind: "payment", chainId: "80002", logIndex: 7 }),
+    ],
+    [
+      "evm:80002:abcdef0000000000000000000000000000000000000000000000000000000001:7",
+      "evm:80002:abcdef0000000000000000000000000000000000000000000000000000000001:7",
+    ]);
+  rec("settlement-sb1-solana-instruction-txid", "settlement", "§9.5.8 SB-1", "Solana settlement-tx-id is instruction-level",
+    settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_64B, instructionIndex: 2 }),
+    `solana:devnet:${SOLANA_SIGNATURE_64B}:2`);
+  rec("settlement-sb1-solana-signature-alias-error", "settlement", "§9.5.8 SB-1", "Solana txHash and optional signature must name the same transaction signature",
+    throwResult(() => settlementTxId({
+      rail: "solana-devnet-usdc",
+      txHash: SOLANA_SIGNATURE_64B,
+      kind: "payment",
+      cluster: "devnet",
+      signature: SOLANA_OTHER_SIGNATURE_64B,
+      instructionIndex: 2,
+    }, "pay-solana-spl"), /signature must match txHash/),
+    "throws");
+  rec("settlement-sb1-solana-invalid-signature-error", "settlement", "§9.5.8 SB-1", "Solana signatures must be base58 and decode to exactly 64 bytes",
+    [
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: "not-base58-0OIl", kind: "payment", cluster: "devnet", signature: "not-base58-0OIl", instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: "z".repeat(89), kind: "payment", cluster: "devnet", signature: "z".repeat(89), instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_63B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_63B, instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_65B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_65B, instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+    ],
+    ["throws", "throws", "throws", "throws"]);
+  rec("settlement-sb1-solana-cluster-alias-error", "settlement", "§9.5.8 SB-1", "Solana cluster aliases such as mainnet-beta are rejected instead of normalised",
+    throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet-beta", signature: SOLANA_SIGNATURE_64B, instructionIndex: 2 }, "pay-solana-spl"), /cluster is required/),
+    "throws");
+  rec("settlement-sb1-mixed-coordinate-family-error", "settlement", "§9.5.8 SB-1", "settlement refs carrying both EVM and Solana coordinates are rejected instead of guessed",
+    throwResult(() => settlementTxId({
+      rail: "solana-devnet-usdc",
+      txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      kind: "payment",
+      chainId: 80002,
+      logIndex: 0,
+      cluster: "devnet",
+      signature: SOLANA_SIGNATURE_64B,
+      instructionIndex: 2,
+    }, "pay-solana-spl"), /must not be mixed/),
+    "throws");
+  rec("settlement-sb2-malformed-event-ref-error", "settlement", "§9.5.8 SB-1/SB-2", "malformed event-level settlement refs return ERROR instead of minting a distinct consumed-set key",
+    verifySettlementTxUniqueness([paymentCase({
+      evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }] },
+      result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }] },
+    }).evidence]).decision,
+    "error");
+  rec("settlement-sb2-evm-missing-event-coordinates-error", "settlement", "§9.5.8 SB-1/SB-2", "EVM/x402 settlement refs without chainId+logIndex return ERROR instead of falling back to a legacy key",
+    verifySettlementTxUniqueness([paymentCase({
+      evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }] },
+      result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }] },
+    }).evidence]).decision,
+    "error");
+  rec("settlement-sb2-solana-signature-alias-error", "settlement", "§9.5.8 SB-1/SB-2", "Solana signature aliases return ERROR instead of splitting one instruction into multiple keys",
+    verifySettlementTxUniqueness([paymentCase({
+      evidence: {
+        phase: "pay-solana-spl",
+        paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "devnet", signature: SOLANA_OTHER_SIGNATURE_64B, instructionIndex: 0 }],
+      },
+      result: {
+        txRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "devnet", signature: SOLANA_OTHER_SIGNATURE_64B, instructionIndex: 0 }],
+      },
+    }).evidence]).decision,
+    "error");
+  rec("settlement-sb2-solana-malformed-ref-error", "settlement", "§9.5.8 SB-1/SB-2", "Malformed Solana refs return ERROR instead of minting consumed-set keys",
+    [
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: "not-base58-0OIl", kind: "payment", cluster: "devnet", signature: "not-base58-0OIl", instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: "z".repeat(89), kind: "payment", cluster: "devnet", signature: "z".repeat(89), instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_63B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_63B, instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_65B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_65B, instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet-beta", signature: SOLANA_SIGNATURE_64B, instructionIndex: 0 }] } }).evidence]).decision,
+    ],
+    ["error", "error", "error", "error", "error"]);
+  rec("settlement-sb2-evm-chainid-nonminimal-error", "settlement", "§9.5.8 SB-1/SB-2", "EVM chainId string spelling must be minimal decimal, so leading-zero aliases return ERROR",
+    verifySettlementTxUniqueness([paymentCase({
+      evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: "080002", logIndex: 0 }] },
+      result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: "080002", logIndex: 0 }] },
+    }).evidence]).decision,
+    "error");
+  rec("settlement-sb2-duplicate-txid-cross-job-fail", "settlement", "§9.5.8 SB-2", "consumer-scoped SB-2: one settlement-tx-id counted under two jobIds → FAIL",
+    verifySettlementTxUniqueness([sb2Base.evidence, sb2CrossJob.evidence]), {
+      decision: "fail",
+      conflict: {
+        settlementTxId: settlementTxId(sb2Base.evidence.paymentTxRefs![0]!),
+        first: { jobId: sb2Base.evidence.jobId, phaseIndex: sb2Base.evidence.phaseIndex },
+        second: { jobId: sb2CrossJob.evidence.jobId, phaseIndex: sb2CrossJob.evidence.phaseIndex },
+      },
+      consumed: [{ settlementTxId: settlementTxId(sb2Base.evidence.paymentTxRefs![0]!), jobId: sb2Base.evidence.jobId, phaseIndex: sb2Base.evidence.phaseIndex }],
+    });
+  rec("settlement-sb2-same-job-cross-phase-fail", "settlement", "§9.5.8 SB-2", "consumer-scoped SB-2: one settlement-tx-id counted under two phaseIndex values for the same job → FAIL",
+    verifySettlementTxUniqueness([sb2Base.evidence, sb2CrossPhase.evidence]).decision, "fail");
+  rec("settlement-sb2-same-obligation-idempotent-pass", "settlement", "§9.5.8 SB-2", "consumer-scoped SB-2: repeated evidence for the same (settlement-tx-id, jobId, phaseIndex) is idempotent → PASS",
+    verifySettlementTxUniqueness([sb2Base.evidence, sb2Base.evidence]), {
+      decision: "pass",
+      consumed: [{ settlementTxId: settlementTxId(sb2Base.evidence.paymentTxRefs![0]!), jobId: sb2Base.evidence.jobId, phaseIndex: sb2Base.evidence.phaseIndex }],
+    });
+  rec("settlement-sb2-separate-consumer-views-pass", "settlement", "§9.5.8 SB-2", "SB-2 scope is the consumer's own reconciliation set; separate one-record views each pass",
+    [verifySettlementTxUniqueness([sb2Base.evidence]).decision, verifySettlementTxUniqueness([sb2CrossJob.evidence]).decision], ["pass", "pass"]);
 
   rec("settlement-attestationref-hash-mismatch-fail", "settlement", "§9.5.1 PC-3", "result.attestationRef contentHash not equal evidenceHash(evidence) → FAIL",
     decide(paymentCase({ refreshHash: false, evidence: { paymentAmount: { amount: "6", currency: "USDC" } } })), "fail");
@@ -1193,6 +1433,67 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
 
   rec("settlement-txrefs-mismatch-fail", "settlement", "§9.5.1 PC-1/PC-3", "handler-return txRefs ≠ signed evidence.paymentTxRefs → FAIL (signature covers paymentTxRefs only)",
     decide(paymentCase({ result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xUNSIGNED", kind: "payment" }] } })), "fail");
+
+  rec("settlement-malformed-evm-event-ref-fail", "settlement", "§9.5.8 SB-1", "pay-evm-erc20 success evidence with malformed event txHash → FAIL",
+    decide(paymentCase({
+      evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }] },
+      result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }] },
+    })), "fail");
+
+  const prefixedEvmEventRef = paymentCase({
+    evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }] },
+    result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }] },
+  });
+  rec("settlement-prefixed-evm-event-ref-fail-error", "settlement", "§9.5.8 SB-1/SB-2", "EVM event txHash with a legacy chain prefix is malformed: verifier FAIL, SB-2 ERROR",
+    {
+      settlement: decide(prefixedEvmEventRef),
+      uniqueness: verifySettlementTxUniqueness([prefixedEvmEventRef.evidence]).decision,
+    },
+    { settlement: "fail", uniqueness: "error" });
+
+  rec("settlement-missing-evm-event-coordinates-fail", "settlement", "§9.5.8 SB-1", "pay-evm-erc20 success evidence without chainId+logIndex event coordinates → FAIL",
+    decide(paymentCase({
+      evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }] },
+      result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }] },
+    })), "fail");
+
+  rec("settlement-event-chainid-rail-mismatch-fail", "settlement", "§9.5.8 SB-1", "pay-evm-erc20 event chainId must match the selected rail chainId → FAIL",
+    decide(paymentCase({
+      evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 1, logIndex: 0 }] },
+      result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 1, logIndex: 0 }] },
+    })), "fail");
+
+  rec("settlement-event-railid-mismatch-fail", "settlement", "§9.5.8 SB-1", "payment txRef.rail must match the selected railId even when event coordinates match → FAIL",
+    decide(paymentCase({
+      evidence: { paymentTxRefs: [{ rail: "other-polygon-rail", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }] },
+      result: { txRefs: [{ rail: "other-polygon-rail", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }] },
+    })), "fail");
+
+  const solanaWrongClusterTxRef = { rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet", signature: SOLANA_SIGNATURE_64B, instructionIndex: 0 } as const;
+  rec("settlement-event-cluster-rail-mismatch-fail", "settlement", "§9.5.8 SB-1", "pay-solana-spl event cluster must match the selected rail cluster → FAIL",
+    decide(paymentCase({
+      evidence: {
+        phase: "pay-solana-spl",
+        settlementFinality: { model: "commitment-level", finalityCommitmentLevel: "confirmed", finalityObservedAt: 1_780_014_505_000 },
+        paymentTxRefs: [solanaWrongClusterTxRef],
+      },
+      result: { txRefs: [solanaWrongClusterTxRef] },
+      paymentInput: (input) => ({
+        ...input,
+        rail: {
+          railVersion: 1,
+          railId: "solana-devnet-usdc",
+          railType: "solana-spl",
+          asset: { kind: "spl", cluster: "devnet", mint: "Es9vMFrzaCERexampleMint", symbol: "USDC", decimals: 6 },
+          network: { kind: "solana", cluster: "devnet" },
+          phaseHandler: "pay-solana-spl",
+          parameters: { commitmentLevel: "confirmed" },
+          availability: "mocked",
+          governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+          signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-solana-rail-signature" },
+        },
+      }),
+    })), "fail");
 
   rec("settlement-noncanonical-amount-fail", "settlement", "§14.4 CD-1", "non-canonical PriceTerm.amount (\"1.50\") → FAIL (CD-1 minimal-form)",
     decide(paymentCase({ evidence: { paymentAmount: { amount: "1.50", currency: "USDC" } }, paymentInput: (i) => ({ ...i, amount: { amount: "1.50", currency: "USDC" } }) })), "fail");
@@ -1289,6 +1590,10 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       okTrueWithErrorClass: "fail",
       okFalseNoErrorClass: "fail",
       wrongAnchor: "fail",
+      sb2DuplicateTxidCrossJob: "fail",
+      sb2SameJobCrossPhase: "fail",
+      sb2SameObligationIdempotent: "pass",
+      sb2SeparateConsumerViews: "pass",
       attestationRefHashMismatch: "fail",
       failureNoReason: "fail",
       wrongSignerKey: "fail",
@@ -1692,7 +1997,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 37 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 61 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),

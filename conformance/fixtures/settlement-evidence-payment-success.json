@@ -4,14 +4,16 @@
     "txRefs": [
       {
         "rail": "polygon-amoy-usdc",
-        "txHash": "polygon-amoy:0xsettle0001",
-        "kind": "payment"
+        "txHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "kind": "payment",
+        "chainId": 80002,
+        "logIndex": 0
       }
     ],
     "attestationRef": {
       "kind": "dacs-4-evidence",
       "id": "dacs4:payment:DACS-VERIFY-SETTLE-0001:polygon-amoy-usdc:0",
-      "contentHash": "665d4604f4002a3a1f98ca4e719ecbd0deca9b67b827364cf89602f30de52ca2"
+      "contentHash": "4e51d3bfee75b213c7af6324c4fff107ec659264d87bc5e10b25be436634ae83"
     }
   },
   "evidence": {
@@ -23,8 +25,10 @@
     "paymentTxRefs": [
       {
         "rail": "polygon-amoy-usdc",
-        "txHash": "polygon-amoy:0xsettle0001",
-        "kind": "payment"
+        "txHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "kind": "payment",
+        "chainId": 80002,
+        "logIndex": 0
       }
     ],
     "paymentAmount": {
@@ -40,7 +44,7 @@
     "signature": {
       "algorithm": "ed25519",
       "signer": "did:demos:orchestrator",
-      "value": "OxCi74mRsmCyy3gcJHMklxMo2mDG1eGALoSfHyj5j2pW9WuqxaD97Lv-Lcfht56LNYQg7pChsrA836FyxblEDA"
+      "value": "YIe9uGN160RY3vr64ErzbJZRpsFTDNhCy2mELXeo3c0-5l5bEe-pKsiB-D0_0boXG8A4ras3WXM0fOB2zBmHAA"
     }
   },
   "paymentInput": {
@@ -104,7 +108,7 @@
       "route": "dacs-verify-reference"
     }
   },
-  "evidenceHash": "665d4604f4002a3a1f98ca4e719ecbd0deca9b67b827364cf89602f30de52ca2",
+  "evidenceHash": "4e51d3bfee75b213c7af6324c4fff107ec659264d87bc5e10b25be436634ae83",
   "publicKeys": {
     "did:demos:orchestrator": "maekceCtXQ62avDhCrkykrlD64Bd6XkRY320vgwHLkI"
   },
