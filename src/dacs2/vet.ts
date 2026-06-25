@@ -10,6 +10,9 @@ import {
   type MatchResult,
 } from "../dacs1.ts";
 import { cf4Encode } from "../logical-address.ts";
+import { canonicalize } from "../canonicalize.ts";
+import { sha256Hex } from "../hash.ts";
+import { buildSignedBytes, DOMAIN_SEPARATOR_REGISTRY, verifyEd25519 } from "../signing.ts";
 
 // DACS-2 (Vet) — the verifier-side conformance surface of §7.4/§7.5/§7.6 and the
 // §6.3.3 match algorithm. This module covers the read-only checks the spec's §14.2
@@ -117,6 +120,120 @@ function isVerifiedPass(c: BundleClaim, resolve: VerifyResultResolver): boolean 
   if (!c.verifiedBy) return false;
   const vr = resolve(c.verifiedBy);
   return vr != null && vr.decision === "pass";
+}
+
+function resolvedVerifyPass(c: BundleClaim, resolve: VerifyResultResolver): VerifyResult | null {
+  if (!c.verifiedBy) return null;
+  const vr = resolve(c.verifiedBy);
+  return vr != null && vr.decision === "pass" ? vr : null;
+}
+
+function presentationControlsKeyClaim(bundle: IdentityBundle, claim: BundleClaim): boolean {
+  const presentation = bundle.presentation;
+  if (presentation === null || typeof presentation !== "object") return false;
+  const p = presentation as Record<string, unknown>;
+  const publicKeyRaw = keyClaimPublicKey(claim.ref);
+  if (publicKeyRaw === null) return false;
+  const signedBytes = (() => {
+    try {
+      return bundlePresentationSignedBytes(bundle);
+    } catch {
+      return null;
+    }
+  })();
+  if (signedBytes === null) return false;
+  switch (p.kind) {
+    case "per-claim": {
+      if (!Array.isArray(p.signatures)) return false;
+      return p.signatures.some((sig) => {
+        if (sig === null || typeof sig !== "object") return false;
+        const record = sig as Record<string, unknown>;
+        return record.ref === claim.ref
+          && typeof record.signature === "string"
+          && verifiesKeySignature(publicKeyRaw, signedBytes, record.signature);
+      });
+    }
+    case "sr1-root":
+      return p.rootClaim === claim.ref
+        && typeof p.aggregateSignature === "string"
+        && verifiesKeySignature(publicKeyRaw, signedBytes, p.aggregateSignature);
+    default:
+      return false;
+  }
+}
+
+function bundlePresentationSignedBytes(bundle: IdentityBundle): Uint8Array {
+  const { presentation: _presentation, ...signedScope } = bundle;
+  const artifactHash = sha256Hex(canonicalize(signedScope));
+  return buildSignedBytes(DOMAIN_SEPARATOR_REGISTRY["dacs-1-bundle-presentation"], artifactHash);
+}
+
+function keyClaimPublicKey(ref: ClaimReference): Uint8Array | null {
+  const prefix = "key:";
+  if (!ref.toLowerCase().startsWith(prefix)) return null;
+  const value = ref.slice(prefix.length);
+  if (/^[0-9a-f]{64}$/.test(value)) return new Uint8Array(Buffer.from(value, "hex"));
+  if (!/^[A-Za-z0-9_-]{43}$/.test(value)) return null;
+  const publicKeyRaw = new Uint8Array(Buffer.from(value, "base64url"));
+  return publicKeyRaw.length === 32 ? publicKeyRaw : null;
+}
+
+function verifiesKeySignature(publicKeyRaw: Uint8Array, signedBytes: Uint8Array, signature: string): boolean {
+  try {
+    const signatureRaw = new Uint8Array(Buffer.from(signature, "base64url"));
+    if (signatureRaw.length !== 64) return false;
+    return verifyEd25519(publicKeyRaw, signedBytes, signatureRaw);
+  } catch {
+    return false;
+  }
+}
+
+function verifyResultProvesClaimControl(claim: BundleClaim, vr: VerifyResult): boolean {
+  const scheme = schemeOf(claim.ref);
+  if (scheme === "cci-xm") {
+    return vr.method === "sr1-link" && vr.data?.sr1ControlLink === true;
+  }
+  if (scheme === "lei") {
+    return vr.method === "vlei-presentation" && vr.data?.holderBinding === true;
+  }
+  return vr.method === "vc-presentation" && vr.data?.holderBinding === true;
+}
+
+/**
+ * DACS-1 §6.3.2 step (6): a controlled use of `presentedBy` needs a proof
+ * binding the presenter to that identifier. A DACS-2 pass that only confirms a
+ * public identifier exists remains valid supporting context, but is not enough
+ * for controlled identity or reputation keying.
+ */
+export function vetControlledPresentedBy(
+  bundle: IdentityBundle,
+  resolve: VerifyResultResolver,
+  now: number,
+  selectorRequirement?: ClaimRequirement,
+): MatchResult {
+  const presented = bundle.claims.find((c) => c.ref === bundle.presentedBy);
+  if (!presented) return { ok: false, reason: "controlled presentedBy does not resolve to a claim" };
+  const scheme = schemeOf(presented.ref);
+  const cr = selectorRequirement ?? { scheme, verificationRequired: scheme !== "key" };
+  if (!claimFreshnessAndMaxAgePasses(presented, cr, now)) {
+    return { ok: false, reason: "controlled presentedBy claim stale (primary freshness guard)" };
+  }
+  if (cr.verificationRequired && resolvedVerifyPass(presented, resolve) === null) {
+    return { ok: false, reason: "controlled presentedBy verifiedBy does not resolve to decision=pass" };
+  }
+  if (scheme === "key") {
+    return presentationControlsKeyClaim(bundle, presented)
+      ? { ok: true }
+      : { ok: false, reason: "controlled presentedBy key lacks presentation proof" };
+  }
+  const vr = resolvedVerifyPass(presented, resolve);
+  if (vr === null) {
+    return { ok: false, reason: "controlled presentedBy verifiedBy does not resolve to decision=pass" };
+  }
+  if (!verifyResultProvesClaimControl(presented, vr)) {
+    return { ok: false, reason: "controlled presentedBy proof is existence-only" };
+  }
+  return { ok: true };
 }
 
 /**
@@ -253,18 +370,12 @@ export function vetMatch(
     if (schemeOf(bundle.presentedBy) !== requirement.primaryClaimSelector.toLowerCase()) {
       return { ok: false, reason: "MA-2 presentedBy scheme != primaryClaimSelector" };
     }
-    const presented = bundle.claims.find((c) => c.ref === bundle.presentedBy);
-    if (!presented) return { ok: false, reason: "MA-3 presentedBy does not resolve to a claim" };
     const selectorRequirement = [
       ...requirement.required,
       ...(requirement.oneOf ?? []).flat(),
     ].find((cr) => cr.scheme.toLowerCase() === requirement.primaryClaimSelector!.toLowerCase()) ?? { scheme: requirement.primaryClaimSelector, verificationRequired: false };
-    if (!claimFreshnessAndMaxAgePasses(presented, selectorRequirement, now)) {
-      return { ok: false, reason: "MA-3 presentedBy claim stale (primary freshness guard)" };
-    }
-    if (!isVerifiedPass(presented, resolve)) {
-      return { ok: false, reason: "MA-3 presentedBy verifiedBy does not resolve to decision=pass (tier-laundering guard)" };
-    }
+    const control = vetControlledPresentedBy(bundle, resolve, now, selectorRequirement);
+    if (!control.ok) return { ok: false, reason: `MA-3 ${control.reason}` };
   }
   return { ok: true };
 }

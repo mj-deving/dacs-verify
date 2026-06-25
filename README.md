@@ -38,10 +38,10 @@ The load-bearing design point: **arbitrator legitimacy binds at *agreement* time
 ## Run
 
 ```bash
-bun test                          # 223 tests
+bun test                          # 251 tests
 bun examples/attestation-bundle-0004.ts
 bun examples/dispute-scenario.ts  # end-to-end §10.4.3 dispute → arbitrated → reputation reweighted; emits vectors
-bun conformance/run.ts            # 208/208 golden conformance checks
+bun conformance/run.ts            # 219/219 golden conformance checks
 bunx tsc --noEmit                 # strict typecheck
 ```
 

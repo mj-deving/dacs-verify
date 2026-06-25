@@ -6,6 +6,7 @@ import {
   validateMethodContract,
   vetAttestationAddress,
   vetCompositeAddress,
+  vetControlledPresentedBy,
   vetMatch,
   type VerifyResult,
   type VerifyResultResolver,
@@ -18,6 +19,7 @@ import {
   type AgreementDocument,
   type ListingForValidation,
 } from "../src/dacs3/agreement.ts";
+import { keypairFromSeed, signArtifact } from "../examples/issuer-kit.ts";
 
 // ── §14.2 Vet ────────────────────────────────────────────────────────────────
 
@@ -71,13 +73,16 @@ describe("DACS-2 Vet — matching algorithm (MA-1..MA-3) with full resolution", 
       : v.anchor.locator === "stor-indet" ? { decision: "indeterminate", method: "vc-presentation" }
         : v.anchor.locator === "stor-error" ? { decision: "error", method: "vc-presentation", errorClass: "transient" }
           : v.anchor.locator === "stor-counterparty-malformed" ? { decision: "error", method: "vc-presentation", errorClass: "counterparty" }
-        : { decision: "pass", method: "vc-presentation" };
-  const mk = (claims: BundleClaim[], presentedBy?: string): IdentityBundle => ({
+            : v.anchor.locator === "stor-vlei-pass" ? { decision: "pass", method: "vlei-presentation", data: { holderBinding: true } }
+              : v.anchor.locator === "stor-registry-fake-holderbinding" ? { decision: "pass", method: "gleif-registry", data: { holderBinding: true } }
+                : v.anchor.locator === "stor-sr1-pass" ? { decision: "pass", method: "sr1-link", data: { sr1ControlLink: true } }
+                : { decision: "pass", method: "gleif-registry" };
+  const mk = (claims: BundleClaim[], presentedBy?: string, presentation: IdentityBundle["presentation"] = { kind: "siwd" }): IdentityBundle => ({
     bundleVersion: "1",
     presentedBy: presentedBy ?? claims[0]!.ref,
     presentedAt: NOW,
     claims: claims.map((c) => (c.issuedAt === undefined && c.expiresAt === undefined ? { ...c, issuedAt: NOW - 1_000 } : c)),
-    presentation: { kind: "siwd" },
+    presentation,
   });
   const reqLei: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }] };
   const reqPrimary: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }], primaryClaimSelector: "lei" };
@@ -95,7 +100,71 @@ describe("DACS-2 Vet — matching algorithm (MA-1..MA-3) with full resolution", 
     expect(vetMatch(laundering, reqPrimary, resolve, NOW).ok).toBe(false); // resolved reject
   });
   test("MA-3 verified presentedBy → accept", () => {
-    expect(vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-pass") }], "lei:984500ABCDEF12345678"), reqPrimary, resolve, NOW).ok).toBe(true);
+    expect(vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-vlei-pass") }], "lei:984500ABCDEF12345678"), reqPrimary, resolve, NOW).ok).toBe(true);
+  });
+  test("#170 existence-only LEI pass remains supporting context but not controlled presentedBy", () => {
+    const b = mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-registry-pass") }], "lei:984500ABCDEF12345678");
+    expect(vetMatch(b, reqLei, resolve, NOW).ok).toBe(true);
+    expect(vetMatch(b, reqPrimary, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 controlled presentedBy proof is existence-only" });
+    expect(vetControlledPresentedBy(b, resolve, NOW)).toEqual({ ok: false, reason: "controlled presentedBy proof is existence-only" });
+  });
+  test("#170 holder-bound vLEI pass qualifies as controlled presentedBy", () => {
+    const b = mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-vlei-pass") }], "lei:984500ABCDEF12345678");
+    expect(vetMatch(b, reqPrimary, resolve, NOW).ok).toBe(true);
+    expect(vetControlledPresentedBy(b, resolve, NOW).ok).toBe(true);
+  });
+  test("#170 existence-only method cannot forge control through holderBinding data", () => {
+    const b = mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-registry-fake-holderbinding") }], "lei:984500ABCDEF12345678");
+    expect(vetMatch(b, reqPrimary, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 controlled presentedBy proof is existence-only" });
+    expect(vetControlledPresentedBy(b, resolve, NOW)).toEqual({ ok: false, reason: "controlled presentedBy proof is existence-only" });
+  });
+  test("#170 key presentedBy is controlled by its presentation signature", () => {
+    const reqKey: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: false }], primaryClaimSelector: "key" };
+    const kp = keypairFromSeed("17".repeat(32));
+    const keyClaim = `key:${kp.publicKeyB64u}`;
+    const unsigned = mk([{ ref: keyClaim, issuedAt: NOW - 1_000 }], keyClaim, { kind: "per-claim", signatures: [] });
+    const signature = signArtifact("dacs-bundle-presentation:v1:", unsigned as unknown as Record<string, unknown>, kp.privateKey, ["presentation"]);
+    const b = { ...unsigned, presentation: { kind: "per-claim", signatures: [{ ref: keyClaim, signature }] } };
+    expect(vetMatch(b, reqKey, resolve, NOW).ok).toBe(true);
+    expect(vetControlledPresentedBy(b, resolve, NOW).ok).toBe(true);
+  });
+  test("#170 malformed key presentation scope rejects without throwing", () => {
+    const reqKey: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: false }], primaryClaimSelector: "key" };
+    const kp = keypairFromSeed("1a".repeat(32));
+    const keyClaim = `key:${kp.publicKeyB64u}`;
+    const unsigned = mk([{ ref: keyClaim, issuedAt: NOW - 1_000 }], keyClaim, { kind: "per-claim", signatures: [] });
+    const signature = signArtifact("dacs-bundle-presentation:v1:", unsigned as unknown as Record<string, unknown>, kp.privateKey, ["presentation"]);
+    const malformed = { ...unsigned, presentedAt: Number.MAX_SAFE_INTEGER + 1, presentation: { kind: "per-claim", signatures: [{ ref: keyClaim, signature }] } } as unknown as IdentityBundle;
+    expect(() => vetMatch(malformed, reqKey, resolve, NOW)).not.toThrow();
+    expect(() => vetControlledPresentedBy(malformed, resolve, NOW)).not.toThrow();
+    expect(vetMatch(malformed, reqKey, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 controlled presentedBy key lacks presentation proof" });
+    expect(vetControlledPresentedBy(malformed, resolve, NOW)).toEqual({ ok: false, reason: "controlled presentedBy key lacks presentation proof" });
+  });
+  test("#170 stale key presentedBy is rejected despite a valid presentation signature", () => {
+    const reqKey: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: false }], primaryClaimSelector: "key" };
+    const kp = keypairFromSeed("18".repeat(32));
+    const keyClaim = `key:${Buffer.from(kp.publicKeyRaw).toString("hex")}`;
+    const unsigned = mk([
+      { ref: keyClaim, issuedAt: NOW - 2_000, expiresAt: NOW - 1_000 },
+      { ref: `key:${"ab".repeat(32)}`, issuedAt: NOW - 1_000 },
+    ], keyClaim, { kind: "per-claim", signatures: [] });
+    const signature = signArtifact("dacs-bundle-presentation:v1:", unsigned as unknown as Record<string, unknown>, kp.privateKey, ["presentation"]);
+    const b = { ...unsigned, presentation: { kind: "per-claim", signatures: [{ ref: keyClaim, signature }] } };
+    expect(vetMatch(b, reqKey, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 controlled presentedBy claim stale (primary freshness guard)" });
+    expect(vetControlledPresentedBy(b, resolve, NOW)).toEqual({ ok: false, reason: "controlled presentedBy claim stale (primary freshness guard)" });
+  });
+  test("#170 verified key primary rejects unverified presentedBy despite another verified key", () => {
+    const reqKeyVerified: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: true }], primaryClaimSelector: "key" };
+    const kp = keypairFromSeed("19".repeat(32));
+    const keyClaim = `key:${Buffer.from(kp.publicKeyRaw).toString("hex")}`;
+    const unsigned = mk([
+      { ref: keyClaim, issuedAt: NOW - 1_000 },
+      { ref: `key:${"cd".repeat(32)}`, issuedAt: NOW - 1_000, verifiedBy: vb("stor-pass") },
+    ], keyClaim, { kind: "per-claim", signatures: [] });
+    const signature = signArtifact("dacs-bundle-presentation:v1:", unsigned as unknown as Record<string, unknown>, kp.privateKey, ["presentation"]);
+    const b = { ...unsigned, presentation: { kind: "per-claim", signatures: [{ ref: keyClaim, signature }] } };
+    expect(vetMatch(b, reqKeyVerified, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 controlled presentedBy verifiedBy does not resolve to decision=pass" });
+    expect(vetControlledPresentedBy(b, resolve, NOW, reqKeyVerified.required[0])).toEqual({ ok: false, reason: "controlled presentedBy verifiedBy does not resolve to decision=pass" });
   });
   test("find_claim: verificationRequired + resolved indeterminate → claim absent", () => {
     expect(vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-indet") }]), reqLei, resolve, NOW).ok).toBe(false);
@@ -129,7 +198,7 @@ describe("DACS-2 Vet — matching algorithm (MA-1..MA-3) with full resolution", 
       primaryClaimSelector: "lei",
     };
 
-    expect(vetMatch(b, req, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 presentedBy claim stale (primary freshness guard)" });
+    expect(vetMatch(b, req, resolve, NOW)).toEqual({ ok: false, reason: "MA-3 controlled presentedBy claim stale (primary freshness guard)" });
   });
   test("oneOf aggregation precedence is error > indeterminate > fail within the group", () => {
     const req: BundleRequirement = {

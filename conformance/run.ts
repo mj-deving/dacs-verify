@@ -54,6 +54,7 @@ import {
   validateMethodContract,
   vetAttestationAddress,
   vetCompositeAddress,
+  vetControlledPresentedBy,
   vetMatch,
   VET_DECISIONS,
   type VerifyResult,
@@ -497,13 +498,16 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       : v.anchor.locator === "stor-indet" ? { decision: "indeterminate", method: "vc-presentation" }
         : v.anchor.locator === "stor-error" ? { decision: "error", method: "vc-presentation", errorClass: "transient" }
           : v.anchor.locator === "stor-counterparty-malformed" ? { decision: "error", method: "vc-presentation", errorClass: "counterparty" }
-        : { decision: "pass", method: "vc-presentation" };
-  const mk = (claims: BundleClaim[], presentedBy?: string): IdentityBundle => ({
+            : v.anchor.locator === "stor-vlei-pass" ? { decision: "pass", method: "vlei-presentation", data: { holderBinding: true } }
+              : v.anchor.locator === "stor-registry-fake-holderbinding" ? { decision: "pass", method: "gleif-registry", data: { holderBinding: true } }
+                : v.anchor.locator === "stor-sr1-pass" ? { decision: "pass", method: "sr1-link", data: { sr1ControlLink: true } }
+                : { decision: "pass", method: "gleif-registry" };
+  const mk = (claims: BundleClaim[], presentedBy?: string, presentation: IdentityBundle["presentation"] = { kind: "siwd" }): IdentityBundle => ({
     bundleVersion: "1",
     presentedBy: presentedBy ?? claims[0]!.ref,
     presentedAt: NOW,
     claims: claims.map((c) => (c.issuedAt === undefined && c.expiresAt === undefined ? { ...c, issuedAt: NOW - 1_000 } : c)),
-    presentation: { kind: "siwd" },
+    presentation,
   });
   const reqLei: BundleRequirement = { requirementVersion: "1", required: [{ scheme: "lei", verificationRequired: true }] };
   const reqOneOf: BundleRequirement = { requirementVersion: "1", required: [], oneOf: [[{ scheme: "lei", verificationRequired: true }, { scheme: "finra-crd", verificationRequired: true }]] };
@@ -527,7 +531,60 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     { dacs1Presence: matchRequirement(ma3Unverified, reqPrimary, NOW).ok, vetResolved: vetMatch(ma3Unverified, reqPrimary, resolveVR, NOW).ok },
     { dacs1Presence: true, vetResolved: false });
   rec("vet-ma3-verified-accept", "vet", "§6.3.3", "MA-3: selector set + presentedBy resolves to pass → ACCEPT",
-    vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-pass") }], "lei:984500ABCDEF12345678"), reqPrimary, resolveVR, NOW).ok, true);
+    vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-vlei-pass") }], "lei:984500ABCDEF12345678"), reqPrimary, resolveVR, NOW).ok, true);
+  const registryLei = mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-registry-pass") }], "lei:984500ABCDEF12345678");
+  rec("vet-control-existence-only-lei-supporting-context", "vet", "§6.3.2 step (6)", "#170: existence-only bare-registry LEI pass remains valid supporting context for a required claim",
+    vetMatch(registryLei, reqLei, resolveVR, NOW).ok, true);
+  rec("vet-control-existence-only-lei-presentedby-reject", "vet", "§6.3.2 step (6)", "#170: existence-only bare-registry LEI pass cannot serve as controlled presentedBy",
+    vetMatch(registryLei, reqPrimary, resolveVR, NOW).ok, false);
+  rec("vet-control-existence-only-lei-reputation-key-reject", "vet", "§10.5.2", "#170: existence-only bare-registry LEI pass cannot serve as a reputation key",
+    vetControlledPresentedBy(registryLei, resolveVR, NOW).ok, false);
+  const registryLeiWithForgedControlData = mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-registry-fake-holderbinding") }], "lei:984500ABCDEF12345678");
+  rec("vet-control-existence-method-forged-holderbinding-reject", "vet", "§6.3.2 step (6)", "#170: existence-only methods cannot forge control by setting holderBinding data",
+    vetMatch(registryLeiWithForgedControlData, reqPrimary, resolveVR, NOW).ok,
+    false);
+  const keyControlKp = keypairFromSeed("17".repeat(32));
+  const keyControlClaim = `key:${keyControlKp.publicKeyB64u}`;
+  const unsignedKeyControl = mk([{ ref: keyControlClaim, issuedAt: NOW - 1_000 }], keyControlClaim, { kind: "per-claim", signatures: [] });
+  const keyControlSignature = signArtifact("dacs-bundle-presentation:v1:", unsignedKeyControl as unknown as Record<string, unknown>, keyControlKp.privateKey, ["presentation"]);
+  rec("vet-control-key-presentation-accept", "vet", "§6.3.2 step (6)", "#170: a key: claim is controlled by a per-claim presentation signature",
+    vetMatch({ ...unsignedKeyControl, presentation: { kind: "per-claim", signatures: [{ ref: keyControlClaim, signature: keyControlSignature }] } }, { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: false }], primaryClaimSelector: "key" }, resolveVR, NOW).ok,
+    true);
+  const malformedKeyControlKp = keypairFromSeed("1a".repeat(32));
+  const malformedKeyControlClaim = `key:${malformedKeyControlKp.publicKeyB64u}`;
+  const unsignedMalformedKeyControl = mk([{ ref: malformedKeyControlClaim, issuedAt: NOW - 1_000 }], malformedKeyControlClaim, { kind: "per-claim", signatures: [] });
+  const malformedKeyControlSignature = signArtifact("dacs-bundle-presentation:v1:", unsignedMalformedKeyControl as unknown as Record<string, unknown>, malformedKeyControlKp.privateKey, ["presentation"]);
+  const malformedKeyControlBundle = { ...unsignedMalformedKeyControl, presentedAt: Number.MAX_SAFE_INTEGER + 1, presentation: { kind: "per-claim", signatures: [{ ref: malformedKeyControlClaim, signature: malformedKeyControlSignature }] } } as unknown as IdentityBundle;
+  const malformedKeyControlResult = (() => {
+    try {
+      return vetMatch(malformedKeyControlBundle, { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: false }], primaryClaimSelector: "key" }, resolveVR, NOW).ok ? "pass" : "fail";
+    } catch {
+      return "throw";
+    }
+  })();
+  rec("vet-control-key-malformed-scope-reject-no-throw", "vet", "§6.3.2 step (6)", "#170: malformed key presentation scope rejects instead of throwing",
+    malformedKeyControlResult,
+    "fail");
+  const staleKeyControlKp = keypairFromSeed("18".repeat(32));
+  const staleKeyControlClaim = `key:${Buffer.from(staleKeyControlKp.publicKeyRaw).toString("hex")}`;
+  const unsignedStaleKeyControl = mk([
+    { ref: staleKeyControlClaim, issuedAt: NOW - 2_000, expiresAt: NOW - 1_000 },
+    { ref: `key:${"ab".repeat(32)}`, issuedAt: NOW - 1_000 },
+  ], staleKeyControlClaim, { kind: "per-claim", signatures: [] });
+  const staleKeyControlSignature = signArtifact("dacs-bundle-presentation:v1:", unsignedStaleKeyControl as unknown as Record<string, unknown>, staleKeyControlKp.privateKey, ["presentation"]);
+  rec("vet-control-key-stale-reject", "vet", "§6.3.2 step (6)", "#170: a stale key: claim remains rejected even with a valid presentation signature",
+    vetMatch({ ...unsignedStaleKeyControl, presentation: { kind: "per-claim", signatures: [{ ref: staleKeyControlClaim, signature: staleKeyControlSignature }] } }, { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: false }], primaryClaimSelector: "key" }, resolveVR, NOW).ok,
+    false);
+  const unverifiedKeyControlKp = keypairFromSeed("19".repeat(32));
+  const unverifiedKeyControlClaim = `key:${Buffer.from(unverifiedKeyControlKp.publicKeyRaw).toString("hex")}`;
+  const unsignedUnverifiedKeyControl = mk([
+    { ref: unverifiedKeyControlClaim, issuedAt: NOW - 1_000 },
+    { ref: `key:${"cd".repeat(32)}`, issuedAt: NOW - 1_000, verifiedBy: vb("stor-pass") },
+  ], unverifiedKeyControlClaim, { kind: "per-claim", signatures: [] });
+  const unverifiedKeyControlSignature = signArtifact("dacs-bundle-presentation:v1:", unsignedUnverifiedKeyControl as unknown as Record<string, unknown>, unverifiedKeyControlKp.privateKey, ["presentation"]);
+  rec("vet-control-key-verified-selector-laundering-reject", "vet", "§6.3.2 step (6)", "#170: verificationRequired key selectors reject an unverified presentedBy even when another key satisfies MA-1",
+    vetMatch({ ...unsignedUnverifiedKeyControl, presentation: { kind: "per-claim", signatures: [{ ref: unverifiedKeyControlClaim, signature: unverifiedKeyControlSignature }] } }, { requirementVersion: "1", required: [{ scheme: "key", verificationRequired: true }], primaryClaimSelector: "key" }, resolveVR, NOW).ok,
+    false);
   rec("vet-findclaim-decision", "vet", "§6.3.3", "find_claim: a verificationRequired claim whose verifiedBy resolves to indeterminate is treated as absent",
     vetMatch(mk([{ ref: "lei:984500ABCDEF12345678", verifiedBy: vb("stor-indet") }]), reqLei, resolveVR, NOW).ok, false);
 
@@ -1997,7 +2054,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 61 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 61 settlement + 47 verify + 32 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
