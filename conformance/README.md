@@ -6,7 +6,7 @@ An independent, third-party set of executable conformance vectors for DACS v0.1,
 
 Surface labels travel with each vector:
 
-- **GOLDEN (208)** — byte-stable and accepted by this reference verifier: 7 canonicalize, 5 decimal, 5 signing, 16 DACS-1, 2 addressing, 4 §10.4 bundle, 17 dispute/disclosure, 58 settlement, 47 verify, 24 vet, 11 negotiate, and 12 governance checks.
+- **GOLDEN (219)** — byte-stable and accepted by this reference verifier: 7 canonicalize, 5 decimal, 5 signing, 16 DACS-1, 2 addressing, 4 §10.4 bundle, 17 dispute/disclosure, 61 settlement, 47 verify, 32 vet, 11 negotiate, and 12 governance checks.
 - **CANDIDATE (0)** — no current candidate vectors.
 
 ## Why
@@ -16,7 +16,7 @@ The spec's §14 conformance chapter defines conformant behaviour but ships no se
 ## Run
 
 ```sh
-bun conformance/run.ts          # run all 208 vectors → exit non-zero on any failure
+bun conformance/run.ts          # run all 219 vectors → exit non-zero on any failure
 bun conformance/run.ts --emit   # regenerate MANIFEST.json + vectors/golden.json
 ```
 
