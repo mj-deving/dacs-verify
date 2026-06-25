@@ -144,9 +144,41 @@ export type SettlementTxReuseConflict = {
 
 export type SettlementTxUniquenessResult =
   | { decision: "pass"; consumed: SettlementTxObligation[] }
-  | { decision: "fail"; conflict: SettlementTxReuseConflict; consumed: SettlementTxObligation[] };
+  | { decision: "fail"; conflict: SettlementTxReuseConflict; consumed: SettlementTxObligation[] }
+  | { decision: "error"; reason: string; consumed: SettlementTxObligation[] };
 
-export function settlementTxId(tx: ChainTxRef): string {
+export function settlementTxId(tx: ChainTxRef, phase?: PaymentPhaseType, finality?: SettlementFinalityRecord): string {
+  const hasEvmCoordinates = tx.chainId !== undefined || tx.logIndex !== undefined;
+  const hasSolanaCoordinates = tx.cluster !== undefined || tx.signature !== undefined || tx.instructionIndex !== undefined;
+
+  if (hasEvmCoordinates && hasSolanaCoordinates) {
+    throw new Error("invalid settlement tx ref: EVM and Solana coordinates must not be mixed");
+  }
+  if (phase === "pay-x402") validateX402TxKindFinality(tx, finality);
+  if (phase !== undefined && requiresEvmEventCoordinates(phase, finality) && (tx.chainId === undefined || tx.logIndex === undefined)) {
+    throw new Error("invalid EVM settlement tx ref: chainId and logIndex are required");
+  }
+  if (phase !== undefined && isSolanaSettlementPhase(phase) && (tx.cluster === undefined || tx.instructionIndex === undefined)) {
+    throw new Error("invalid Solana settlement tx ref: cluster and instructionIndex are required");
+  }
+
+  if (hasEvmCoordinates) {
+    const chainId = canonicalChainId(tx.chainId);
+    const txHash = canonicalEvmTxHash(tx.txHash);
+    const logIndex = canonicalIndex(tx.logIndex, "logIndex");
+    return `evm:${chainId}:${txHash}:${logIndex}`;
+  }
+
+  if (hasSolanaCoordinates) {
+    const cluster = canonicalCluster(tx.cluster);
+    const signature = canonicalSolanaSignature(tx.txHash);
+    if (tx.signature !== undefined && tx.signature !== signature) {
+      throw new Error("invalid Solana settlement tx ref: signature must match txHash");
+    }
+    const instructionIndex = canonicalIndex(tx.instructionIndex, "instructionIndex");
+    return `solana:${cluster}:${signature}:${instructionIndex}`;
+  }
+
   return `${cf4Encode(tx.rail)}:${cf4Encode(tx.kind ?? "")}:${cf4Encode(tx.txHash)}`;
 }
 
@@ -158,7 +190,12 @@ export function verifySettlementTxUniqueness(evidenceSet: readonly SettlementEvi
     if (!PAYMENT_PHASE_TYPES.has(evidence.phase as PaymentPhaseType)) continue;
     if (evidence.outcome !== "success") continue;
     for (const tx of evidence.paymentTxRefs ?? []) {
-      const id = settlementTxId(tx);
+      let id: string;
+      try {
+        id = settlementTxId(tx, evidence.phase as PaymentPhaseType, evidence.settlementFinality);
+      } catch (error) {
+        return { decision: "error", reason: error instanceof Error ? error.message : "invalid settlement tx ref", consumed: consumedList };
+      }
       const next = { jobId: evidence.jobId, phaseIndex: evidence.phaseIndex };
       const prior = consumed.get(id);
       if (prior === undefined) {
@@ -294,6 +331,7 @@ export function verifySettlementEvidence(input: {
         // incl. provider-receipt AP2 (L2630) and x402 even in the no-settlement-tx fallback (L2636). So a non-empty
         // paymentTxRefs requirement on payment success is correct for all rails, not over-constraining.
         if (evidence.paymentTxRefs === undefined || evidence.paymentTxRefs.length === 0) return "fail";
+        if (!paymentTxRefsHaveCanonicalIds(evidence, paymentInput!.rail)) return "fail";
         if (evidence.paymentAmount === undefined) return "fail";
       } else {
         // §9.6 (L2647/L2689): storage-program & attested-payload deliveries produce a content hash + anchor;
@@ -549,7 +587,17 @@ function isAttestationRef(ref: AttestationRef): boolean {
 }
 
 function isChainTxRef(tx: ChainTxRef): boolean {
-  return typeof tx?.rail === "string" && tx.rail.length > 0 && typeof tx.txHash === "string" && tx.txHash.length > 0;
+  const hasEvmCoordinates = tx?.chainId !== undefined || tx?.logIndex !== undefined;
+  const hasSolanaCoordinates = tx?.cluster !== undefined || tx?.signature !== undefined || tx?.instructionIndex !== undefined;
+  return typeof tx?.rail === "string" && tx.rail.length > 0
+    && typeof tx.txHash === "string" && tx.txHash.length > 0
+    && !(hasEvmCoordinates && hasSolanaCoordinates)
+    && (tx.signature === undefined || tx.signature === tx.txHash)
+    && optionalChainId(tx.chainId)
+    && optionalNonEmptyString(tx.cluster)
+    && optionalNonEmptyString(tx.signature)
+    && optionalSafeNonNegativeInteger(tx.logIndex)
+    && optionalSafeNonNegativeInteger(tx.instructionIndex);
 }
 
 function priceEq(a: PriceTerm, b: PriceTerm): boolean {
@@ -615,7 +663,117 @@ function txRefsEqual(a: ChainTxRef[] | undefined, b: ChainTxRef[] | undefined): 
   if (a === undefined && b === undefined) return true;
   if (a === undefined || b === undefined) return false;
   if (a.length !== b.length) return false;
-  return a.every((tx, i) => tx.rail === b[i]!.rail && tx.txHash === b[i]!.txHash && tx.kind === b[i]!.kind);
+  return a.every((tx, i) => {
+    const other = b[i]!;
+    return tx.rail === other.rail
+      && tx.txHash === other.txHash
+      && tx.kind === other.kind
+      && tx.chainId === other.chainId
+      && tx.cluster === other.cluster
+      && tx.signature === other.signature
+      && tx.logIndex === other.logIndex
+      && tx.instructionIndex === other.instructionIndex;
+  });
+}
+
+function paymentTxRefsHaveCanonicalIds(evidence: SettlementEvidence, rail: RailDefinition): boolean {
+  for (const tx of evidence.paymentTxRefs ?? []) {
+    try {
+      settlementTxId(tx, evidence.phase as PaymentPhaseType, evidence.settlementFinality);
+    } catch {
+      return false;
+    }
+    if (!txRefMatchesRail(tx, rail)) return false;
+  }
+  return true;
+}
+
+function txRefMatchesRail(tx: ChainTxRef, rail: RailDefinition): boolean {
+  if (tx.rail !== rail.railId) return false;
+  if (tx.chainId !== undefined || tx.logIndex !== undefined) {
+    const expected = evmChainIdForRail(rail);
+    return expected !== undefined && canonicalChainId(tx.chainId) === String(expected);
+  }
+  if (tx.cluster !== undefined || tx.signature !== undefined || tx.instructionIndex !== undefined) {
+    const expected = solanaClusterForRail(rail);
+    return expected !== undefined && canonicalCluster(tx.cluster) === expected;
+  }
+  return true;
+}
+
+function evmChainIdForRail(rail: RailDefinition): number | undefined {
+  if (rail.network.kind === "evm") return rail.network.chainId;
+  if (rail.asset.kind === "erc20" || rail.asset.kind === "native-evm") return rail.asset.chainId;
+  return undefined;
+}
+
+function solanaClusterForRail(rail: RailDefinition): "mainnet" | "devnet" | "testnet" | undefined {
+  if (rail.network.kind === "solana") return rail.network.cluster;
+  if (rail.asset.kind === "spl" || rail.asset.kind === "native-solana") return rail.asset.cluster;
+  return undefined;
+}
+
+function canonicalChainId(chainId: ChainTxRef["chainId"]): string {
+  if (typeof chainId === "number" && Number.isSafeInteger(chainId) && chainId >= 0) return String(chainId);
+  if (typeof chainId === "string" && /^[0-9]+$/.test(chainId)) {
+    const parsed = Number(chainId);
+    if (Number.isSafeInteger(parsed) && String(parsed) === chainId) return chainId;
+  }
+  throw new Error("invalid EVM settlement tx ref: chainId is required");
+}
+
+function canonicalEvmTxHash(txHash: string): string {
+  const hex = txHash.startsWith("0x") || txHash.startsWith("0X") ? txHash.slice(2) : txHash;
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new Error("invalid EVM settlement tx ref: txHash must be 64 hex bytes");
+  return hex.toLowerCase();
+}
+
+function canonicalCluster(cluster: ChainTxRef["cluster"]): string {
+  if (cluster === "mainnet" || cluster === "devnet" || cluster === "testnet") return cluster;
+  throw new Error("invalid Solana settlement tx ref: cluster is required");
+}
+
+function canonicalSolanaSignature(signature: string): string {
+  if (signature.length > 0) return signature;
+  throw new Error("invalid Solana settlement tx ref: txHash signature is required");
+}
+
+function canonicalIndex(index: number | undefined, label: "logIndex" | "instructionIndex"): number {
+  if (Number.isSafeInteger(index) && typeof index === "number" && index >= 0) return index;
+  throw new Error(`invalid settlement tx ref: ${label} is required`);
+}
+
+function optionalChainId(chainId: ChainTxRef["chainId"]): boolean {
+  return chainId === undefined
+    || (typeof chainId === "number" && Number.isSafeInteger(chainId) && chainId >= 0)
+    || (typeof chainId === "string" && /^[0-9]+$/.test(chainId) && String(Number(chainId)) === chainId);
+}
+
+function optionalNonEmptyString(value: unknown): boolean {
+  return value === undefined || (typeof value === "string" && value.length > 0);
+}
+
+function optionalSafeNonNegativeInteger(value: unknown): boolean {
+  return value === undefined || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+}
+
+function requiresEvmEventCoordinates(phase: PaymentPhaseType, finality?: SettlementFinalityRecord): boolean {
+  if (phase === "pay-evm-erc20") return true;
+  if (phase !== "pay-x402") return false;
+  if (finality?.model === "provider-receipt") return false;
+  return true;
+}
+
+function validateX402TxKindFinality(tx: ChainTxRef, finality?: SettlementFinalityRecord): void {
+  const receiptKind = tx.kind === "provider-receipt";
+  const receiptFinality = finality?.model === "provider-receipt";
+  if (receiptKind !== receiptFinality) {
+    throw new Error("invalid x402 settlement tx ref: provider-receipt kind requires provider-receipt finality");
+  }
+}
+
+function isSolanaSettlementPhase(phase: PaymentPhaseType): boolean {
+  return phase === "pay-solana-spl";
 }
 
 function validClaim(claim: ClaimReference): boolean {

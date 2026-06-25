@@ -3,7 +3,7 @@
   "generator": "github.com/mj-deving/dacs-verify",
   "note": "Proposed / non-normative. Run: bun conformance/run.ts",
   "surfaces": {
-    "golden": "191 vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 41 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.",
+    "golden": "208 vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 58 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.",
     "candidate": "0 vectors."
   },
   "cases": [
@@ -1102,6 +1102,42 @@
       "want": "pass"
     },
     {
+      "id": "settlement-x402-provider-receipt-pass",
+      "area": "settlement",
+      "spec": "§9.5.7",
+      "summary": "pay-x402 provider-receipt fallback without settlement-chain event coordinates remains accepted",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "settlement": "pass",
+        "uniqueness": "pass"
+      }
+    },
+    {
+      "id": "settlement-x402-block-depth-missing-event-coordinates-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1/SB-2",
+      "summary": "pay-x402 block-depth settlement refs without chainId+logIndex fail instead of falling back to a legacy key",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "settlement": "fail",
+        "uniqueness": "error"
+      }
+    },
+    {
+      "id": "settlement-x402-block-depth-provider-receipt-kind-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1/SB-2",
+      "summary": "pay-x402 block-depth settlement refs cannot use provider-receipt fallback kind",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "settlement": "fail",
+        "uniqueness": "error"
+      }
+    },
+    {
       "id": "settlement-delivery-pass",
       "area": "settlement",
       "spec": "§14.4",
@@ -1177,6 +1213,81 @@
       }
     },
     {
+      "id": "settlement-sb1-evm-event-txid-normalisation",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "EVM settlement-tx-id is event-level and normalises optional 0x / uppercase spelling",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": [
+        "evm:80002:abcdef0000000000000000000000000000000000000000000000000000000001:7",
+        "evm:80002:abcdef0000000000000000000000000000000000000000000000000000000001:7"
+      ]
+    },
+    {
+      "id": "settlement-sb1-solana-instruction-txid",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "Solana settlement-tx-id is instruction-level",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "solana:devnet:5Vxj8a6gQ4exampleSignature:2"
+    },
+    {
+      "id": "settlement-sb1-solana-signature-alias-error",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "Solana txHash and optional signature must name the same transaction signature",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "throws"
+    },
+    {
+      "id": "settlement-sb1-mixed-coordinate-family-error",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "settlement refs carrying both EVM and Solana coordinates are rejected instead of guessed",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "throws"
+    },
+    {
+      "id": "settlement-sb2-malformed-event-ref-error",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1/SB-2",
+      "summary": "malformed event-level settlement refs return ERROR instead of minting a distinct consumed-set key",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "error"
+    },
+    {
+      "id": "settlement-sb2-evm-missing-event-coordinates-error",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1/SB-2",
+      "summary": "EVM/x402 settlement refs without chainId+logIndex return ERROR instead of falling back to a legacy key",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "error"
+    },
+    {
+      "id": "settlement-sb2-solana-signature-alias-error",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1/SB-2",
+      "summary": "Solana signature aliases return ERROR instead of splitting one instruction into multiple keys",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "error"
+    },
+    {
+      "id": "settlement-sb2-evm-chainid-nonminimal-error",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1/SB-2",
+      "summary": "EVM chainId string spelling must be minimal decimal, so leading-zero aliases return ERROR",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "error"
+    },
+    {
       "id": "settlement-sb2-duplicate-txid-cross-job-fail",
       "area": "settlement",
       "spec": "§9.5.8 SB-2",
@@ -1186,7 +1297,7 @@
       "want": {
         "decision": "fail",
         "conflict": {
-          "settlementTxId": "polygon-amoy-usdc:payment:polygon-amoy%3A0xsettle0001",
+          "settlementTxId": "evm:80002:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0",
           "first": {
             "jobId": "DACS-VERIFY-SETTLE-0001",
             "phaseIndex": 0
@@ -1198,7 +1309,7 @@
         },
         "consumed": [
           {
-            "settlementTxId": "polygon-amoy-usdc:payment:polygon-amoy%3A0xsettle0001",
+            "settlementTxId": "evm:80002:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0",
             "jobId": "DACS-VERIFY-SETTLE-0001",
             "phaseIndex": 0
           }
@@ -1225,7 +1336,7 @@
         "decision": "pass",
         "consumed": [
           {
-            "settlementTxId": "polygon-amoy-usdc:payment:polygon-amoy%3A0xsettle0001",
+            "settlementTxId": "evm:80002:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0",
             "jobId": "DACS-VERIFY-SETTLE-0001",
             "phaseIndex": 0
           }
@@ -1303,6 +1414,63 @@
       "area": "settlement",
       "spec": "§9.5.1 PC-1/PC-3",
       "summary": "handler-return txRefs ≠ signed evidence.paymentTxRefs → FAIL (signature covers paymentTxRefs only)",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-malformed-evm-event-ref-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "pay-evm-erc20 success evidence with malformed event txHash → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-prefixed-evm-event-ref-fail-error",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1/SB-2",
+      "summary": "EVM event txHash with a legacy chain prefix is malformed: verifier FAIL, SB-2 ERROR",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": {
+        "settlement": "fail",
+        "uniqueness": "error"
+      }
+    },
+    {
+      "id": "settlement-missing-evm-event-coordinates-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "pay-evm-erc20 success evidence without chainId+logIndex event coordinates → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-event-chainid-rail-mismatch-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "pay-evm-erc20 event chainId must match the selected rail chainId → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-event-railid-mismatch-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "payment txRef.rail must match the selected railId even when event coordinates match → FAIL",
+      "status": "golden",
+      "reason": "reference-verifier-accepted + byte-stable",
+      "want": "fail"
+    },
+    {
+      "id": "settlement-event-cluster-rail-mismatch-fail",
+      "area": "settlement",
+      "spec": "§9.5.8 SB-1",
+      "summary": "pay-solana-spl event cluster must match the selected rail cluster → FAIL",
       "status": "golden",
       "reason": "reference-verifier-accepted + byte-stable",
       "want": "fail"

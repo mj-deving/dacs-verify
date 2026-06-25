@@ -155,9 +155,86 @@ function liquidityTankPaymentCase() {
   });
 }
 
+function x402Rail(): RailDefinition {
+  return {
+    railVersion: 1,
+    railId: "base-usdc-x402",
+    railType: "x402",
+    asset: { kind: "erc20", chainId: 8453, contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", symbol: "USDC", decimals: 6 },
+    network: { kind: "x402-resource", resourceBaseUrl: "https://pay.example/x402/resource" },
+    phaseHandler: "pay-x402",
+    parameters: { finalityBlocks: 1 },
+    availability: "live",
+    governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+    signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-x402-rail-signature" },
+  };
+}
+
+function x402ProviderReceiptPaymentCase() {
+  const txRef = { rail: "base-usdc-x402", txHash: "provider-receipt:pay.example:receipt-0001", kind: "provider-receipt" };
+  return paymentCase({
+    evidence: {
+      phase: "pay-x402",
+      settlementFinality: { model: "provider-receipt", finalityObservedAt: 1_780_014_503_000 },
+      paymentTxRefs: [txRef],
+    },
+    result: {
+      txRefs: [txRef],
+    },
+    paymentInput: (input) => ({
+      ...input,
+      rail: x402Rail(),
+    }),
+  });
+}
+
+function x402BlockDepthPaymentCase(txRef: NonNullable<SettlementEvidence["paymentTxRefs"]>[number]) {
+  return paymentCase({
+    evidence: {
+      phase: "pay-x402",
+      settlementFinality: { model: "block-depth", finalityBlocks: 1, finalityObservedAt: 1_780_014_504_000 },
+      paymentTxRefs: [txRef],
+    },
+    result: {
+      txRefs: [txRef],
+    },
+    paymentInput: (input) => ({ ...input, rail: x402Rail() }),
+  });
+}
+
 test("payment success settlement evidence passes PC-1..PC-6 and signature", () => {
   const c = buildSettlementPaymentSuccess();
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
+});
+
+test("x402 provider-receipt fallback settlement evidence passes", () => {
+  const c = x402ProviderReceiptPaymentCase();
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("pass");
+});
+
+test("x402 block-depth payment without event coordinates fails instead of falling back", () => {
+  const txRef = {
+    rail: "base-usdc-x402",
+    txHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    kind: "payment",
+  };
+  const c = x402BlockDepthPaymentCase(txRef);
+
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
+});
+
+test("x402 block-depth payment cannot use provider-receipt fallback kind", () => {
+  const txRef = {
+    rail: "base-usdc-x402",
+    txHash: "provider-receipt:pay.example:receipt-0002",
+    kind: "provider-receipt",
+  };
+  const c = x402BlockDepthPaymentCase(txRef);
+
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
 });
 
 test("delivery success settlement evidence passes without settlementFinality", () => {
@@ -216,6 +293,12 @@ test("payment anchor includes phaseIndex and accepts discriminated payment addre
 
 test("payment anchor CF-4-encodes colon-bearing railId", () => {
   const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "evm-erc20:1:USDC", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "evm-erc20:1:USDC", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
     paymentInput: (input) => ({ ...input, rail: { ...input.rail, railId: "evm-erc20:1:USDC" } }),
   });
   expect(c.result.attestationRef?.id).toBe(`dacs4:payment:${c.evidence.jobId}:evm-erc20%3A1%3AUSDC:${c.evidence.phaseIndex}`);
@@ -233,6 +316,153 @@ test("same jobId and railId with the wrong phaseIndex anchor fails instead of co
     },
   });
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("SB-1 EVM settlement-tx-id is event-level and normalises hex spelling", () => {
+  const upper = "0xABCDEF0000000000000000000000000000000000000000000000000000000001";
+  const lower = "abcdef0000000000000000000000000000000000000000000000000000000001";
+
+  expect(settlementTxId({
+    rail: "polygon-amoy-usdc",
+    txHash: upper,
+    kind: "payment",
+    chainId: 80002,
+    logIndex: 7,
+  })).toBe(`evm:80002:${lower}:7`);
+  expect(settlementTxId({
+    rail: "polygon-amoy-usdc",
+    txHash: lower,
+    kind: "payment",
+    chainId: "80002",
+    logIndex: 7,
+  })).toBe(`evm:80002:${lower}:7`);
+});
+
+test("SB-1 Solana settlement-tx-id is instruction-level", () => {
+  expect(settlementTxId({
+    rail: "solana-devnet-usdc",
+    txHash: "5Vxj8a6gQ4exampleSignature",
+    kind: "payment",
+    cluster: "devnet",
+    signature: "5Vxj8a6gQ4exampleSignature",
+    instructionIndex: 2,
+  })).toBe("solana:devnet:5Vxj8a6gQ4exampleSignature:2");
+});
+
+test("SB-1 Solana txHash/signature aliases are rejected", () => {
+  expect(() => settlementTxId({
+    rail: "solana-devnet-usdc",
+    txHash: "5Vxj8a6gQ4exampleSignatureA",
+    kind: "payment",
+    cluster: "devnet",
+    signature: "5Vxj8a6gQ4exampleSignatureB",
+    instructionIndex: 2,
+  }, "pay-solana-spl")).toThrow("signature must match txHash");
+});
+
+test("SB-1 mixed EVM and Solana settlement coordinates are rejected", () => {
+  expect(() => settlementTxId({
+    rail: "solana-devnet-usdc",
+    txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    kind: "payment",
+    chainId: 80002,
+    logIndex: 0,
+    cluster: "devnet",
+    signature: "5Vxj8a6gQ4exampleSignature",
+    instructionIndex: 2,
+  }, "pay-solana-spl")).toThrow("must not be mixed");
+});
+
+test("SB-2 malformed event-level settlement refs return error instead of minting a new key", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+  });
+
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
+});
+
+test("SB-2 prefixed EVM event txHash returns error", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+  });
+
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
+});
+
+test("SB-2 EVM/x402 settlement refs without event coordinates return error", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }],
+    },
+    result: {
+      txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }],
+    },
+  });
+
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
+});
+
+test("SB-2 Solana txHash/signature aliases return error", () => {
+  const c = paymentCase({
+    evidence: {
+      phase: "pay-solana-spl",
+      paymentTxRefs: [{
+        rail: "solana-devnet-usdc",
+        txHash: "5Vxj8a6gQ4exampleSignatureA",
+        kind: "payment",
+        cluster: "devnet",
+        signature: "5Vxj8a6gQ4exampleSignatureB",
+        instructionIndex: 0,
+      }],
+    },
+    result: {
+      txRefs: [{
+        rail: "solana-devnet-usdc",
+        txHash: "5Vxj8a6gQ4exampleSignatureA",
+        kind: "payment",
+        cluster: "devnet",
+        signature: "5Vxj8a6gQ4exampleSignatureB",
+        instructionIndex: 0,
+      }],
+    },
+  });
+
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
+});
+
+test("SB-2 non-minimal EVM chainId spelling returns error", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{
+        rail: "polygon-amoy-usdc",
+        txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        kind: "payment",
+        chainId: "080002",
+        logIndex: 0,
+      }],
+    },
+    result: {
+      txRefs: [{
+        rail: "polygon-amoy-usdc",
+        txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        kind: "payment",
+        chainId: "080002",
+        logIndex: 0,
+      }],
+    },
+  });
+
+  expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
 });
 
 test("SB-2 duplicate settlement-tx-id across two jobIds fails in one consumer view", () => {
@@ -360,6 +590,102 @@ test("evidence.phase not matching the pinned rail.phaseHandler returns fail", ()
 test("handler-return txRefs not matching signed evidence.paymentTxRefs returns fail", () => {
   // PC-1/PC-3: the signature covers paymentTxRefs; an unsigned result advertising different txRefs is inconsistent.
   const c = paymentCase({ result: { txRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xUNSIGNED", kind: "payment" }] } });
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("payment success with malformed EVM event txRef returns fail", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xnot-hex", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+  });
+
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("payment success with prefixed EVM event txHash returns fail", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "polygon-amoy-usdc", txHash: "polygon-amoy:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+  });
+
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("payment success with missing EVM event coordinates returns fail", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }],
+    },
+    result: {
+      txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment" }],
+    },
+  });
+
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("payment success with event chainId not matching the selected rail returns fail", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 1, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 1, logIndex: 0 }],
+    },
+  });
+
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("payment success with txRef rail not matching the selected rail returns fail", () => {
+  const c = paymentCase({
+    evidence: {
+      paymentTxRefs: [{ rail: "other-polygon-rail", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+    result: {
+      txRefs: [{ rail: "other-polygon-rail", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }],
+    },
+  });
+
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
+test("Solana payment success with event cluster not matching the selected rail returns fail", () => {
+  const txRef = { rail: "solana-devnet-usdc", txHash: "5Vxj8a6gQ4exampleSignature", kind: "payment", cluster: "mainnet", signature: "5Vxj8a6gQ4exampleSignature", instructionIndex: 0 };
+  const c = paymentCase({
+    evidence: {
+      phase: "pay-solana-spl",
+      settlementFinality: { model: "commitment-level", finalityCommitmentLevel: "confirmed", finalityObservedAt: 1_780_014_505_000 },
+      paymentTxRefs: [txRef],
+    },
+    result: {
+      txRefs: [txRef],
+    },
+    paymentInput: (input) => ({
+      ...input,
+      rail: {
+        railVersion: 1,
+        railId: "solana-devnet-usdc",
+        railType: "solana-spl",
+        asset: { kind: "spl", cluster: "devnet", mint: "Es9vMFrzaCERexampleMint", symbol: "USDC", decimals: 6 },
+        network: { kind: "solana", cluster: "devnet" },
+        phaseHandler: "pay-solana-spl",
+        parameters: { commitmentLevel: "confirmed" },
+        availability: "mocked",
+        governance: { proposedBy: SETTLEMENT_ORCHESTRATOR_CLAIM, acceptedAt: 1_780_014_390_000, anchoring: "in-code" },
+        signature: { algorithm: "ed25519", signer: SETTLEMENT_ORCHESTRATOR_CLAIM, value: "fixture-solana-rail-signature" },
+      },
+    }),
+  });
+
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
 });
 

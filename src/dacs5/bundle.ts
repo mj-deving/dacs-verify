@@ -25,6 +25,11 @@ export interface ChainTxRef {
   rail: string;
   txHash: string;
   kind?: string;
+  chainId?: number | string;
+  cluster?: "mainnet" | "devnet" | "testnet" | string;
+  signature?: string;
+  logIndex?: number;
+  instructionIndex?: number;
 }
 
 // §10.4 (L3085): the role of the party that anchored THIS copy. `outcome` is recorded from this party's
