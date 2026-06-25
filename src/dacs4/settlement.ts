@@ -121,6 +121,9 @@ const ERROR_CLASSES: ReadonlySet<string> = new Set(["permanent", "transient", "c
 const SIGNATURE_ALGORITHMS: ReadonlySet<string> = new Set(["ed25519", "ecdsa-secp256k1", "sr1-aggregate"]);
 const FINALITY_COMMITMENTS: ReadonlySet<string> = new Set(["processed", "confirmed", "finalized"]);
 const HASH_RE = /^[0-9a-f]{64}$/;
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const BASE58_INDEX = new Map([...BASE58_ALPHABET].map((char, index) => [char, index]));
+const SOLANA_SIGNATURE_MAX_BASE58_LENGTH = 88;
 
 export function evidenceHash(evidence: SettlementEvidence): string {
   return sha256Hex(canonicalize(withoutSignature(evidence as unknown as Record<string, unknown>, "signature")));
@@ -172,7 +175,7 @@ export function settlementTxId(tx: ChainTxRef, phase?: PaymentPhaseType, finalit
   if (hasSolanaCoordinates) {
     const cluster = canonicalCluster(tx.cluster);
     const signature = canonicalSolanaSignature(tx.txHash);
-    if (tx.signature !== undefined && tx.signature !== signature) {
+    if (tx.signature !== undefined && canonicalSolanaSignature(tx.signature) !== signature) {
       throw new Error("invalid Solana settlement tx ref: signature must match txHash");
     }
     const instructionIndex = canonicalIndex(tx.instructionIndex, "instructionIndex");
@@ -734,13 +737,43 @@ function canonicalCluster(cluster: ChainTxRef["cluster"]): string {
 }
 
 function canonicalSolanaSignature(signature: string): string {
-  if (signature.length > 0) return signature;
-  throw new Error("invalid Solana settlement tx ref: txHash signature is required");
+  if (signature.length === 0 || signature.length > SOLANA_SIGNATURE_MAX_BASE58_LENGTH) {
+    throw new Error("invalid Solana settlement tx ref: signature must be base58 and decode to exactly 64 bytes");
+  }
+  const decoded = decodeBase58(signature);
+  if (decoded?.length === 64) return signature;
+  throw new Error("invalid Solana settlement tx ref: signature must be base58 and decode to exactly 64 bytes");
 }
 
 function canonicalIndex(index: number | undefined, label: "logIndex" | "instructionIndex"): number {
   if (Number.isSafeInteger(index) && typeof index === "number" && index >= 0) return index;
   throw new Error(`invalid settlement tx ref: ${label} is required`);
+}
+
+function decodeBase58(value: string): Uint8Array | undefined {
+  if (value.length === 0) return undefined;
+  const bytes = [0];
+  for (const char of value) {
+    const digit = BASE58_INDEX.get(char);
+    if (digit === undefined) return undefined;
+    let carry = digit;
+    for (let i = 0; i < bytes.length; i += 1) {
+      const next = bytes[i]! * 58 + carry;
+      bytes[i] = next & 0xff;
+      carry = next >> 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (const char of value) {
+    if (char !== "1") break;
+    bytes.push(0);
+  }
+  const decoded = bytes.reverse();
+  if (decoded.length > 1 && decoded.every((byte) => byte === 0)) decoded.shift();
+  return Uint8Array.from(decoded);
 }
 
 function optionalChainId(chainId: ChainTxRef["chainId"]): boolean {

@@ -141,6 +141,10 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EMIT = process.argv.includes("--emit");
+const SOLANA_SIGNATURE_64B = "6pc4LiB8KHAPvbUbkozrTcPL5zXspYBdATv5raNDyVbhiKjrKokLb9o111kxTD5KkPVd7UBSCcFcnWFkrJ82Hu6";
+const SOLANA_OTHER_SIGNATURE_64B = "1".repeat(64);
+const SOLANA_SIGNATURE_65B = "Sh7jjzjhHgLUBZApQNSMJTBZF2wHJpdtcmoJRpGgGMEAhPi8i1LHTjp314M1kgJ5kWHLPYy4EEbWwr88YaZzhauA";
+const SOLANA_SIGNATURE_63B = "2KVLLRHLnNndTeGKJBCJ6aPjPRpKmJVEdajqgKtUrxRB8YtPxTuQvWBRUC3i7Pg3SEhvVesrD9SWrjRe86EpsW";
 
 const statusOf = (_area: string): "golden" => "golden";
 const reasonOf = (area: string): string =>
@@ -1312,17 +1316,28 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       "evm:80002:abcdef0000000000000000000000000000000000000000000000000000000001:7",
     ]);
   rec("settlement-sb1-solana-instruction-txid", "settlement", "§9.5.8 SB-1", "Solana settlement-tx-id is instruction-level",
-    settlementTxId({ rail: "solana-devnet-usdc", txHash: "5Vxj8a6gQ4exampleSignature", kind: "payment", cluster: "devnet", signature: "5Vxj8a6gQ4exampleSignature", instructionIndex: 2 }),
-    "solana:devnet:5Vxj8a6gQ4exampleSignature:2");
+    settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_64B, instructionIndex: 2 }),
+    `solana:devnet:${SOLANA_SIGNATURE_64B}:2`);
   rec("settlement-sb1-solana-signature-alias-error", "settlement", "§9.5.8 SB-1", "Solana txHash and optional signature must name the same transaction signature",
     throwResult(() => settlementTxId({
       rail: "solana-devnet-usdc",
-      txHash: "5Vxj8a6gQ4exampleSignatureA",
+      txHash: SOLANA_SIGNATURE_64B,
       kind: "payment",
       cluster: "devnet",
-      signature: "5Vxj8a6gQ4exampleSignatureB",
+      signature: SOLANA_OTHER_SIGNATURE_64B,
       instructionIndex: 2,
     }, "pay-solana-spl"), /signature must match txHash/),
+    "throws");
+  rec("settlement-sb1-solana-invalid-signature-error", "settlement", "§9.5.8 SB-1", "Solana signatures must be base58 and decode to exactly 64 bytes",
+    [
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: "not-base58-0OIl", kind: "payment", cluster: "devnet", signature: "not-base58-0OIl", instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: "z".repeat(89), kind: "payment", cluster: "devnet", signature: "z".repeat(89), instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_63B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_63B, instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+      throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_65B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_65B, instructionIndex: 2 }, "pay-solana-spl"), /decode to exactly 64 bytes/),
+    ],
+    ["throws", "throws", "throws", "throws"]);
+  rec("settlement-sb1-solana-cluster-alias-error", "settlement", "§9.5.8 SB-1", "Solana cluster aliases such as mainnet-beta are rejected instead of normalised",
+    throwResult(() => settlementTxId({ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet-beta", signature: SOLANA_SIGNATURE_64B, instructionIndex: 2 }, "pay-solana-spl"), /cluster is required/),
     "throws");
   rec("settlement-sb1-mixed-coordinate-family-error", "settlement", "§9.5.8 SB-1", "settlement refs carrying both EVM and Solana coordinates are rejected instead of guessed",
     throwResult(() => settlementTxId({
@@ -1332,7 +1347,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       chainId: 80002,
       logIndex: 0,
       cluster: "devnet",
-      signature: "5Vxj8a6gQ4exampleSignature",
+      signature: SOLANA_SIGNATURE_64B,
       instructionIndex: 2,
     }, "pay-solana-spl"), /must not be mixed/),
     "throws");
@@ -1352,13 +1367,22 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     verifySettlementTxUniqueness([paymentCase({
       evidence: {
         phase: "pay-solana-spl",
-        paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: "5Vxj8a6gQ4exampleSignatureA", kind: "payment", cluster: "devnet", signature: "5Vxj8a6gQ4exampleSignatureB", instructionIndex: 0 }],
+        paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "devnet", signature: SOLANA_OTHER_SIGNATURE_64B, instructionIndex: 0 }],
       },
       result: {
-        txRefs: [{ rail: "solana-devnet-usdc", txHash: "5Vxj8a6gQ4exampleSignatureA", kind: "payment", cluster: "devnet", signature: "5Vxj8a6gQ4exampleSignatureB", instructionIndex: 0 }],
+        txRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "devnet", signature: SOLANA_OTHER_SIGNATURE_64B, instructionIndex: 0 }],
       },
     }).evidence]).decision,
     "error");
+  rec("settlement-sb2-solana-malformed-ref-error", "settlement", "§9.5.8 SB-1/SB-2", "Malformed Solana refs return ERROR instead of minting consumed-set keys",
+    [
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: "not-base58-0OIl", kind: "payment", cluster: "devnet", signature: "not-base58-0OIl", instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: "z".repeat(89), kind: "payment", cluster: "devnet", signature: "z".repeat(89), instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_63B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_63B, instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_65B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_65B, instructionIndex: 0 }] } }).evidence]).decision,
+      verifySettlementTxUniqueness([paymentCase({ evidence: { phase: "pay-solana-spl", paymentTxRefs: [{ rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet-beta", signature: SOLANA_SIGNATURE_64B, instructionIndex: 0 }] } }).evidence]).decision,
+    ],
+    ["error", "error", "error", "error", "error"]);
   rec("settlement-sb2-evm-chainid-nonminimal-error", "settlement", "§9.5.8 SB-1/SB-2", "EVM chainId string spelling must be minimal decimal, so leading-zero aliases return ERROR",
     verifySettlementTxUniqueness([paymentCase({
       evidence: { paymentTxRefs: [{ rail: "polygon-amoy-usdc", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: "080002", logIndex: 0 }] },
@@ -1445,7 +1469,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       result: { txRefs: [{ rail: "other-polygon-rail", txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", kind: "payment", chainId: 80002, logIndex: 0 }] },
     })), "fail");
 
-  const solanaWrongClusterTxRef = { rail: "solana-devnet-usdc", txHash: "5Vxj8a6gQ4exampleSignature", kind: "payment", cluster: "mainnet", signature: "5Vxj8a6gQ4exampleSignature", instructionIndex: 0 } as const;
+  const solanaWrongClusterTxRef = { rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet", signature: SOLANA_SIGNATURE_64B, instructionIndex: 0 } as const;
   rec("settlement-event-cluster-rail-mismatch-fail", "settlement", "§9.5.8 SB-1", "pay-solana-spl event cluster must match the selected rail cluster → FAIL",
     decide(paymentCase({
       evidence: {
@@ -1973,7 +1997,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 58 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 61 settlement + 47 verify + 24 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),

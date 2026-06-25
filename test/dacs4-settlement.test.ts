@@ -22,6 +22,10 @@ import {
 
 const ORCHESTRATOR_SEED = "e4".repeat(32);
 const WRONG_SEED = "f5".repeat(32);
+const SOLANA_SIGNATURE_64B = "6pc4LiB8KHAPvbUbkozrTcPL5zXspYBdATv5raNDyVbhiKjrKokLb9o111kxTD5KkPVd7UBSCcFcnWFkrJ82Hu6";
+const SOLANA_OTHER_SIGNATURE_64B = "1".repeat(64);
+const SOLANA_SIGNATURE_65B = "Sh7jjzjhHgLUBZApQNSMJTBZF2wHJpdtcmoJRpGgGMEAhPi8i1LHTjp314M1kgJ5kWHLPYy4EEbWwr88YaZzhauA";
+const SOLANA_SIGNATURE_63B = "2KVLLRHLnNndTeGKJBCJ6aPjPRpKmJVEdajqgKtUrxRB8YtPxTuQvWBRUC3i7Pg3SEhvVesrD9SWrjRe86EpsW";
 
 function keyMap(publicKeys: Record<ClaimReference, string>): Record<ClaimReference, Uint8Array> {
   return Object.fromEntries(
@@ -341,23 +345,51 @@ test("SB-1 EVM settlement-tx-id is event-level and normalises hex spelling", () 
 test("SB-1 Solana settlement-tx-id is instruction-level", () => {
   expect(settlementTxId({
     rail: "solana-devnet-usdc",
-    txHash: "5Vxj8a6gQ4exampleSignature",
+    txHash: SOLANA_SIGNATURE_64B,
     kind: "payment",
     cluster: "devnet",
-    signature: "5Vxj8a6gQ4exampleSignature",
+    signature: SOLANA_SIGNATURE_64B,
     instructionIndex: 2,
-  })).toBe("solana:devnet:5Vxj8a6gQ4exampleSignature:2");
+  })).toBe(`solana:devnet:${SOLANA_SIGNATURE_64B}:2`);
 });
 
 test("SB-1 Solana txHash/signature aliases are rejected", () => {
   expect(() => settlementTxId({
     rail: "solana-devnet-usdc",
-    txHash: "5Vxj8a6gQ4exampleSignatureA",
+    txHash: SOLANA_SIGNATURE_64B,
     kind: "payment",
     cluster: "devnet",
-    signature: "5Vxj8a6gQ4exampleSignatureB",
+    signature: SOLANA_OTHER_SIGNATURE_64B,
     instructionIndex: 2,
   }, "pay-solana-spl")).toThrow("signature must match txHash");
+});
+
+test("SB-1 Solana signatures must be base58 and decode to exactly 64 bytes", () => {
+  const base = {
+    rail: "solana-devnet-usdc",
+    kind: "payment",
+    cluster: "devnet",
+    instructionIndex: 2,
+  } as const;
+
+  for (const badSignature of ["not-base58-0OIl", "z".repeat(89), SOLANA_SIGNATURE_63B, SOLANA_SIGNATURE_65B]) {
+    expect(() => settlementTxId({
+      ...base,
+      txHash: badSignature,
+      signature: badSignature,
+    }, "pay-solana-spl")).toThrow("decode to exactly 64 bytes");
+  }
+});
+
+test("SB-1 Solana cluster aliases are rejected instead of normalised", () => {
+  expect(() => settlementTxId({
+    rail: "solana-devnet-usdc",
+    txHash: SOLANA_SIGNATURE_64B,
+    kind: "payment",
+    cluster: "mainnet-beta",
+    signature: SOLANA_SIGNATURE_64B,
+    instructionIndex: 2,
+  }, "pay-solana-spl")).toThrow("cluster is required");
 });
 
 test("SB-1 mixed EVM and Solana settlement coordinates are rejected", () => {
@@ -368,7 +400,7 @@ test("SB-1 mixed EVM and Solana settlement coordinates are rejected", () => {
     chainId: 80002,
     logIndex: 0,
     cluster: "devnet",
-    signature: "5Vxj8a6gQ4exampleSignature",
+    signature: SOLANA_SIGNATURE_64B,
     instructionIndex: 2,
   }, "pay-solana-spl")).toThrow("must not be mixed");
 });
@@ -418,26 +450,43 @@ test("SB-2 Solana txHash/signature aliases return error", () => {
       phase: "pay-solana-spl",
       paymentTxRefs: [{
         rail: "solana-devnet-usdc",
-        txHash: "5Vxj8a6gQ4exampleSignatureA",
+        txHash: SOLANA_SIGNATURE_64B,
         kind: "payment",
         cluster: "devnet",
-        signature: "5Vxj8a6gQ4exampleSignatureB",
+        signature: SOLANA_OTHER_SIGNATURE_64B,
         instructionIndex: 0,
       }],
     },
     result: {
       txRefs: [{
         rail: "solana-devnet-usdc",
-        txHash: "5Vxj8a6gQ4exampleSignatureA",
+        txHash: SOLANA_SIGNATURE_64B,
         kind: "payment",
         cluster: "devnet",
-        signature: "5Vxj8a6gQ4exampleSignatureB",
+        signature: SOLANA_OTHER_SIGNATURE_64B,
         instructionIndex: 0,
       }],
     },
   });
 
   expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
+});
+
+test("SB-2 malformed Solana refs return error instead of minting keys", () => {
+  for (const txRef of [
+    { rail: "solana-devnet-usdc", txHash: "not-base58-0OIl", kind: "payment", cluster: "devnet", signature: "not-base58-0OIl", instructionIndex: 0 },
+    { rail: "solana-devnet-usdc", txHash: "z".repeat(89), kind: "payment", cluster: "devnet", signature: "z".repeat(89), instructionIndex: 0 },
+    { rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_63B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_63B, instructionIndex: 0 },
+    { rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_65B, kind: "payment", cluster: "devnet", signature: SOLANA_SIGNATURE_65B, instructionIndex: 0 },
+    { rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet-beta", signature: SOLANA_SIGNATURE_64B, instructionIndex: 0 },
+  ]) {
+    const c = paymentCase({
+      evidence: { phase: "pay-solana-spl", paymentTxRefs: [txRef] },
+      result: { txRefs: [txRef] },
+    });
+
+    expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
+  }
 });
 
 test("SB-2 non-minimal EVM chainId spelling returns error", () => {
@@ -659,7 +708,7 @@ test("payment success with txRef rail not matching the selected rail returns fai
 });
 
 test("Solana payment success with event cluster not matching the selected rail returns fail", () => {
-  const txRef = { rail: "solana-devnet-usdc", txHash: "5Vxj8a6gQ4exampleSignature", kind: "payment", cluster: "mainnet", signature: "5Vxj8a6gQ4exampleSignature", instructionIndex: 0 };
+  const txRef = { rail: "solana-devnet-usdc", txHash: SOLANA_SIGNATURE_64B, kind: "payment", cluster: "mainnet", signature: SOLANA_SIGNATURE_64B, instructionIndex: 0 };
   const c = paymentCase({
     evidence: {
       phase: "pay-solana-spl",
