@@ -241,6 +241,22 @@ test("x402 block-depth payment cannot use provider-receipt fallback kind", () =>
   expect(verifySettlementTxUniqueness([c.evidence]).decision).toBe("error");
 });
 
+test("non-canonical agreement price fails settlement verification", () => {
+  const c = paymentCase({
+    paymentInput: (input) => ({
+      ...input,
+      agreement: {
+        ...input.agreement,
+        terms: {
+          ...(input.agreement.terms as Record<string, unknown>),
+          price: { amount: "5.00", currency: "USDC" },
+        },
+      },
+    }),
+  });
+  expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("fail");
+});
+
 test("delivery success settlement evidence passes without settlementFinality", () => {
   const c = buildSettlementDeliverySuccess();
   expect(verifySettlementEvidence({ ...c, resolveKey: resolveFrom(c.publicKeys) })).toBe("pass");

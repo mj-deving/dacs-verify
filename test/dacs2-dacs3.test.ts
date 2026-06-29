@@ -14,6 +14,7 @@ import {
 import { matchRequirement, type BundleClaim, type BundleRequirement, type IdentityBundle } from "../src/dacs1.ts";
 import {
   deliverableSpecHash,
+  listingContentHash,
   negotiableBand,
   validateAgreement,
   type AgreementDocument,
@@ -257,6 +258,8 @@ describe("DACS-3 Negotiate — §8.5.2 listing-conformance validation", () => {
   const deliverableSpec = { deliverableType: "attested-payload", verificationMethod: "http-attestation", schemaUrl: "https://schemas.example/x.json" };
   const dHash = deliverableSpecHash(deliverableSpec);
   const baseListing: ListingForValidation = {
+    listingId: "L1",
+    listingVersion: 1,
     pricing: { kind: "negotiable", bandCenter: { amount: "100", currency: "USDC" }, minPct: 10, maxPct: 20 },
     acceptedRails: ["erc20-usdc-base", "spl-usdc"],
     offering: { deliverable: deliverableSpec },
@@ -269,7 +272,15 @@ describe("DACS-3 Negotiate — §8.5.2 listing-conformance validation", () => {
     terms: { price: { amount: "95", currency: "USDC" }, rail: "erc20-usdc-base", deliverable: { deliverableType: "attested-payload", hash: dHash, schemaUrl: "https://schemas.example/x.json" }, deadline: COMMITTED_AT + 1000 },
   };
   const at = (amount: string): AgreementDocument => ({ ...ok, terms: { ...ok.terms, price: { amount, currency: "USDC" } } });
-  const V = (a: AgreementDocument, l: ListingForValidation = baseListing) => validateAgreement(a, l, COMMITTED_AT);
+  const bind = (a: AgreementDocument, l: ListingForValidation = baseListing): AgreementDocument => ({
+    ...a,
+    listingRef: {
+      listingId: l.listingId!,
+      version: (l.version ?? l.listingVersion)!,
+      contentHash: listingContentHash(l),
+    },
+  });
+  const V = (a: AgreementDocument, l: ListingForValidation = baseListing) => validateAgreement(bind(a, l), l, COMMITTED_AT);
 
   test("price-band inclusive, edges accept, just-outside reject", () => {
     expect(V(at("95")).ok).toBe(true);
@@ -280,14 +291,65 @@ describe("DACS-3 Negotiate — §8.5.2 listing-conformance validation", () => {
   });
   test("negotiableBand bounds are [90, 120]", () => {
     expect(negotiableBand("100", 10, 20)).toEqual({ lower: "90", upper: "120" });
+    expect(negotiableBand("100", "2.5", "2.5")).toEqual({ lower: "97.5", upper: "102.5" });
   });
   test("currency mismatch rejected before amount compare", () => {
     const r = V({ ...ok, terms: { ...ok.terms, price: { amount: "95", currency: "EURC" } } });
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.failedAt).toBe("currency");
   });
+  test("listingRef binding fails closed when metadata is missing or mismatched", () => {
+    const listingWithRef: ListingForValidation = { ...baseListing, listingId: "L1", listingVersion: 1 };
+    const ref = { listingId: "L1", version: 1, contentHash: listingContentHash(listingWithRef) };
+    const agreementWithRef: AgreementDocument = { ...ok, listingRef: ref };
+    expect(validateAgreement(agreementWithRef, listingWithRef, COMMITTED_AT).ok).toBe(true);
+    expect(validateAgreement({ ...agreementWithRef, listingRef: { ...ref, contentHash: "def456" } }, listingWithRef, COMMITTED_AT).ok).toBe(false);
+    expect(validateAgreement(ok, listingWithRef, COMMITTED_AT).ok).toBe(false);
+    const { listingId: _listingId, listingVersion: _listingVersion, ...listingWithoutMetadata } = listingWithRef;
+    const missing = validateAgreement(agreementWithRef, listingWithoutMetadata, COMMITTED_AT);
+    expect(missing.ok).toBe(false);
+    expect(missing.ok === false && missing.failedAt).toBe("listingRef");
+    const nullRef = validateAgreement({ ...ok, listingRef: null } as unknown as AgreementDocument, listingWithRef, COMMITTED_AT);
+    expect(nullRef.ok).toBe(false);
+    expect(nullRef.ok === false && nullRef.failedAt).toBe("listingRef");
+  });
+  test("listingRef binding rejects self-declared contentHash over tampered listing body", () => {
+    const listingWithRef: ListingForValidation = { ...baseListing, listingId: "L1", listingVersion: 1 };
+    const ref = { listingId: "L1", version: 1, contentHash: listingContentHash(listingWithRef) };
+    const tampered: ListingForValidation = { ...listingWithRef, pricing: { kind: "negotiable", bandCenter: { amount: "95", currency: "USDC" }, minPct: 10, maxPct: 20 }, contentHash: ref.contentHash };
+    expect(validateAgreement({ ...ok, listingRef: ref }, tampered, COMMITTED_AT).ok).toBe(false);
+    const dualVersionTampered: ListingForValidation = { ...listingWithRef, version: 2, contentHash: ref.contentHash };
+    expect(validateAgreement({ ...ok, listingRef: { ...ref, version: 2 } }, dualVersionTampered, COMMITTED_AT).ok).toBe(false);
+    const conflictingAliases: ListingForValidation = { ...listingWithRef, version: 2, listingVersion: 1 };
+    expect(validateAgreement({ ...ok, listingRef: { ...ref, version: 2, contentHash: listingContentHash(conflictingAliases) } }, conflictingAliases, COMMITTED_AT).ok).toBe(false);
+  });
+  test("listingRef binding rejects fractional JSON-number percentages", () => {
+    const listingWithFractionalPct: ListingForValidation = { ...baseListing, listingId: "L1", listingVersion: 1, pricing: { kind: "negotiable", bandCenter: { amount: "100", currency: "USDC" }, minPct: 2.5, maxPct: 2.5 } };
+    expect(() => listingContentHash(listingWithFractionalPct)).toThrow(/non-integer JSON number/);
+  });
+  test("listingRef binding accepts hash-safe decimal-string percentages", () => {
+    const listingWithStringPct: ListingForValidation = { ...baseListing, pricing: { kind: "negotiable", bandCenter: { amount: "100", currency: "USDC" }, minPct: "2.5", maxPct: "2.5" } };
+    expect(V(at("101"), listingWithStringPct).ok).toBe(true);
+    expect(V(at("103"), listingWithStringPct).ok).toBe(false);
+  });
+  test("negotiable bands whose lower edge is non-positive are malformed", () => {
+    const malformedBand: ListingForValidation = { ...baseListing, pricing: { kind: "negotiable", bandCenter: { amount: "100", currency: "USDC" }, minPct: 100, maxPct: 20 } };
+    const result = V(at("50"), malformedBand);
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.failedAt).toBe("price");
+  });
   test("rail not accepted → reject", () => {
     expect(V({ ...ok, terms: { ...ok.terms, rail: "wire-transfer" } }).ok).toBe(false);
+  });
+  test("pay-phase listings require an accepted rail unless explicitly zero-pay", () => {
+    const { rail: _rail, ...termsWithoutRail } = ok.terms;
+    const missingRail = { ...ok, terms: termsWithoutRail };
+    expect(V(missingRail, { ...baseListing, acceptedRails: [] }).ok).toBe(false);
+    expect(V(missingRail, { ...baseListing, acceptedRails: [], hasPayPhase: false }).ok).toBe(true);
+    const { acceptedRails: _acceptedRails, ...zeroPayWithoutRails } = { ...baseListing, hasPayPhase: false };
+    expect(V(missingRail, zeroPayWithoutRails).ok).toBe(true);
+    expect(V(ok, { ...baseListing, acceptedRails: [], hasPayPhase: false }).ok).toBe(false);
+    expect(V(missingRail, { ...baseListing, hasPayPhase: false, pipeline: [{ kind: "pay-x402" }] }).ok).toBe(false);
   });
   test("deliverable type/hash/schema conformance", () => {
     expect(V(ok).ok).toBe(true);
@@ -295,22 +357,28 @@ describe("DACS-3 Negotiate — §8.5.2 listing-conformance validation", () => {
     expect(V({ ...ok, terms: { ...ok.terms, deliverable: { deliverableType: "attested-payload", hash: "deadbeef", schemaUrl: "https://schemas.example/x.json" } } }).ok).toBe(false);
     expect(V({ ...ok, terms: { ...ok.terms, deliverable: { deliverableType: "attested-payload", hash: dHash, schemaUrl: "https://other.example/y.json" } } }).ok).toBe(false);
   });
+  test("deliverable hash is recomputed from the listing payload, not trusted inline", () => {
+    expect(V(ok, { ...baseListing, offering: { deliverable: { ...deliverableSpec, hash: dHash } } }).ok).toBe(true);
+    const tamperedSpec = { ...deliverableSpec, source: "https://evil.example/data", hash: dHash };
+    expect(V(ok, { ...baseListing, offering: { deliverable: tamperedSpec } }).ok).toBe(false);
+  });
   test("deadline measured against anchored committedAt", () => {
     expect(V({ ...ok, terms: { ...ok.terms, deadline: COMMITTED_AT + 86400 * 1000 } }).ok).toBe(true);
     expect(V({ ...ok, terms: { ...ok.terms, deadline: COMMITTED_AT + 86400 * 1000 + 1 } }).ok).toBe(false);
   });
   test("notAfter < committedAt → reject", () => {
-    expect(validateAgreement(ok, { ...baseListing, validity: { notBefore: COMMITTED_AT - 100_000, notAfter: COMMITTED_AT - 1 } }, COMMITTED_AT).ok).toBe(false);
+    expect(V(ok, { ...baseListing, validity: { notBefore: COMMITTED_AT - 100_000, notAfter: COMMITTED_AT - 1 } }).ok).toBe(false);
   });
   test("derivedFromPattern mismatch → reject", () => {
     expect(V({ ...ok, derivedFromPattern: "sealed-envelope" }).ok).toBe(false);
+    expect(V({ ...at("100"), derivedFromPattern: "fixed-price" }).ok).toBe(false);
   });
   test("PS-3 fixed-price over negotiable must equal bandCenter exactly", () => {
     const fixedOverNeg: ListingForValidation = { ...baseListing, pattern: "fixed-price" };
-    expect(validateAgreement({ ...at("100"), derivedFromPattern: "fixed-price" }, fixedOverNeg, COMMITTED_AT).ok).toBe(true);
-    expect(validateAgreement({ ...at("95"), derivedFromPattern: "fixed-price" }, fixedOverNeg, COMMITTED_AT).ok).toBe(false);
+    expect(V({ ...at("100"), derivedFromPattern: "fixed-price" }, fixedOverNeg).ok).toBe(true);
+    expect(V({ ...at("95"), derivedFromPattern: "fixed-price" }, fixedOverNeg).ok).toBe(false);
   });
-  test("terms.price.amount must be CD-1 canonical — non-canonical rejected (matches settlement lane)", () => {
+  test("terms.price.amount must be CD-1 canonical in signed AgreementDocuments", () => {
     const r = V(at("100.00"));
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.failedAt).toBe("price");

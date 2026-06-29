@@ -62,6 +62,7 @@ import {
 } from "../src/dacs2/vet.ts";
 import {
   deliverableSpecHash,
+  listingContentHash,
   negotiableBand,
   validateAgreement,
   type AgreementDocument,
@@ -645,6 +646,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const deliverableSpec = { deliverableType: "attested-payload", verificationMethod: "http-attestation", schemaUrl: "https://schemas.example/x.json" };
   const dHash = deliverableSpecHash(deliverableSpec);
   const baseListing: ListingForValidation = {
+    listingId: "L1",
+    listingVersion: 1,
     pricing: { kind: "negotiable", bandCenter: { amount: "100", currency: "USDC" }, minPct: 10, maxPct: 20 },
     acceptedRails: ["erc20-usdc-base", "spl-usdc"],
     offering: { deliverable: deliverableSpec },
@@ -662,15 +665,24 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     },
   };
   const atPrice = (amount: string): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, price: { amount, currency: "USDC" } } });
-  const failedAt = (a: AgreementDocument, l: ListingForValidation): unknown => { const r = validateAgreement(a, l, COMMITTED_AT); return { ok: r.ok, failedAt: r.ok ? null : r.failedAt }; };
+  const bind = (a: AgreementDocument, l: ListingForValidation = baseListing): AgreementDocument => ({
+    ...a,
+    listingRef: {
+      listingId: l.listingId!,
+      version: (l.version ?? l.listingVersion)!,
+      contentHash: listingContentHash(l),
+    },
+  });
+  const valid = (a: AgreementDocument, l: ListingForValidation = baseListing): boolean => validateAgreement(bind(a, l), l, COMMITTED_AT).ok;
+  const failedAt = (a: AgreementDocument, l: ListingForValidation): unknown => { const r = validateAgreement(bind(a, l), l, COMMITTED_AT); return { ok: r.ok, failedAt: r.ok ? null : r.failedAt }; };
 
   rec("neg-band-inclusive", "negotiate", "§8.5.2", "price-band [bandCenter×(100−minPct)/100, ×(100+maxPct)/100] inclusive; edges accept, just-outside reject (CD-1 full precision)",
     {
-      inBand: validateAgreement(atPrice("95"), baseListing, COMMITTED_AT).ok,
-      lowerEdge: validateAgreement(atPrice("90"), baseListing, COMMITTED_AT).ok,
-      upperEdge: validateAgreement(atPrice("120"), baseListing, COMMITTED_AT).ok,
-      below: validateAgreement(atPrice("89.999"), baseListing, COMMITTED_AT).ok,
-      above: validateAgreement(atPrice("120.001"), baseListing, COMMITTED_AT).ok,
+      inBand: valid(atPrice("95")),
+      lowerEdge: valid(atPrice("90")),
+      upperEdge: valid(atPrice("120")),
+      below: valid(atPrice("89.999")),
+      above: valid(atPrice("120.001")),
     },
     { inBand: true, lowerEdge: true, upperEdge: true, below: false, above: false });
 
@@ -685,18 +697,18 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const delivBad = (deliverable: AgreementDocument["terms"]["deliverable"]): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, deliverable } });
   rec("neg-deliverable", "negotiate", "§8.5.2", "deliverable conformance: deliverableType + canonical hash + schemaUrl must all match the listing offering.deliverable",
     {
-      conforming: validateAgreement(okAgreement, baseListing, COMMITTED_AT).ok,
-      typeMismatch: validateAgreement(delivBad({ deliverableType: "entitlement", hash: dHash, schemaUrl: "https://schemas.example/x.json" }), baseListing, COMMITTED_AT).ok,
-      hashMismatch: validateAgreement(delivBad({ deliverableType: "attested-payload", hash: "deadbeef", schemaUrl: "https://schemas.example/x.json" }), baseListing, COMMITTED_AT).ok,
-      schemaMismatch: validateAgreement(delivBad({ deliverableType: "attested-payload", hash: dHash, schemaUrl: "https://other.example/y.json" }), baseListing, COMMITTED_AT).ok,
+      conforming: valid(okAgreement),
+      typeMismatch: valid(delivBad({ deliverableType: "entitlement", hash: dHash, schemaUrl: "https://schemas.example/x.json" })),
+      hashMismatch: valid(delivBad({ deliverableType: "attested-payload", hash: "deadbeef", schemaUrl: "https://schemas.example/x.json" })),
+      schemaMismatch: valid(delivBad({ deliverableType: "attested-payload", hash: dHash, schemaUrl: "https://other.example/y.json" })),
     },
     { conforming: true, typeMismatch: false, hashMismatch: false, schemaMismatch: false });
 
   const deadlineAgreement = (deadline: number): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, deadline } });
   rec("neg-deadline-committedat", "negotiate", "§8.5.2", "deadline ≤ committedAt + deadlineSecAfterCommit, measured against the ANCHORED committedAt (not generatedAt)",
     {
-      within: validateAgreement(deadlineAgreement(COMMITTED_AT + 86400 * 1000), baseListing, COMMITTED_AT).ok,
-      beyond: validateAgreement(deadlineAgreement(COMMITTED_AT + 86400 * 1000 + 1), baseListing, COMMITTED_AT).ok,
+      within: valid(deadlineAgreement(COMMITTED_AT + 86400 * 1000)),
+      beyond: valid(deadlineAgreement(COMMITTED_AT + 86400 * 1000 + 1)),
     },
     { within: true, beyond: false });
 
@@ -711,19 +723,19 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const fixedOverNeg: ListingForValidation = { ...baseListing, pattern: "fixed-price" };
   rec("neg-ps3-fixed-over-negotiable", "negotiate", "§8.5.2", "PS-3: a fixed-price agreement over negotiable pricing MUST equal bandCenter exactly, not merely lie within the band",
     {
-      exact: validateAgreement({ ...atPrice("100"), derivedFromPattern: "fixed-price" }, fixedOverNeg, COMMITTED_AT).ok,
-      inBandNotExact: validateAgreement({ ...atPrice("95"), derivedFromPattern: "fixed-price" }, fixedOverNeg, COMMITTED_AT).ok,
+      exact: valid({ ...atPrice("100"), derivedFromPattern: "fixed-price" }, fixedOverNeg),
+      inBandNotExact: valid({ ...atPrice("95"), derivedFromPattern: "fixed-price" }, fixedOverNeg),
     },
     { exact: true, inBandNotExact: false });
 
   rec("neg-priceanchor-absent-ok", "negotiate", "§8.5.2", "priceAnchor absent MUST NOT cause rejection — an otherwise-valid agreement is accepted",
-    validateAgreement(okAgreement, baseListing, COMMITTED_AT).ok, true);
+    valid(okAgreement), true);
 
   const withAnchor = (price: string): AgreementDocument => ({ ...okAgreement, terms: { ...okAgreement.terms, priceAnchor: { price, attestationRef: { contentHash: "abc123" } } } });
   rec("neg-priceanchor-present", "negotiate", "§8.5.2", "when present, priceAnchor.price MUST be CD-1 canonical + attestationRef.contentHash present; non-canonical → REJECT",
     {
-      valid: validateAgreement(withAnchor("100"), baseListing, COMMITTED_AT).ok,
-      nonCanonical: validateAgreement(withAnchor("100.00"), baseListing, COMMITTED_AT).ok,
+      valid: valid(withAnchor("100")),
+      nonCanonical: valid(withAnchor("100.00")),
     },
     { valid: true, nonCanonical: false });
 
