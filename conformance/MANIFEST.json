@@ -1904,6 +1904,12 @@
         "sellerPhaseIndexes": [
           1
         ],
+        "buyerPhaseKinds": [
+          "rate"
+        ],
+        "sellerPhaseKinds": [
+          "rate"
+        ],
         "distinctHashes": true
       }
     },
@@ -1918,6 +1924,12 @@
         "verdict": "unified",
         "buyerDecision": "pass",
         "sellerDecision": "pass",
+        "buyerPhaseKinds": [
+          "rate"
+        ],
+        "sellerPhaseKinds": [
+          "rate"
+        ],
         "distinctHashes": true,
         "buyerRatingRefs": 0,
         "sellerRatingRefs": 1

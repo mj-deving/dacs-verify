@@ -197,14 +197,14 @@ export function buildSessionBundleFixtures(): {
     jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
     outcome: "completed",
     finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_100,
-    phase: { index: 0, kind: "verify-phase-index-mismatch", outcome: "ok" },
+    phase: { index: 0, kind: "rate", outcome: "ok" },
     anchoredByRole: "buyer",
   });
   const phaseIndexMismatchSeller = makeBundle({
     jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
     outcome: "completed",
     finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_100,
-    phase: { index: 1, kind: "verify-phase-index-mismatch", outcome: "ok" },
+    phase: { index: 1, kind: "rate", outcome: "ok" },
     anchoredByRole: "seller",
   });
   const advisorySkewFinalisedAt = VERIFY_REPUTATION_WINDOW_START + 1_200;
@@ -224,7 +224,7 @@ export function buildSessionBundleFixtures(): {
     jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
     outcome: "completed",
     finalisedAt: advisorySkewFinalisedAt,
-    phase: { index: 0, kind: "verify-advisory-skew", outcome: "ok" },
+    phase: { index: 0, kind: "rate", outcome: "ok" },
     anchoredByRole: "buyer",
     agreementCommittedAt: advisorySkewAgreementCommittedAt,
     evidenceCheckedAt: advisorySkewEvidenceCheckedAt,
@@ -233,7 +233,7 @@ export function buildSessionBundleFixtures(): {
     jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
     outcome: "completed",
     finalisedAt: advisorySkewFinalisedAt + 111,
-    phase: { index: 0, kind: "verify-advisory-skew", outcome: "ok" },
+    phase: { index: 0, kind: "rate", outcome: "ok" },
     anchoredByRole: "seller",
     ratingRefs: [ref("dacs-5-rating", "advisory-rating", advisoryRatingRecord)],
     agreementCommittedAt: advisorySkewAgreementCommittedAt,
@@ -243,14 +243,14 @@ export function buildSessionBundleFixtures(): {
     jobId: VERIFY_REGISTRY_MISMATCH_JOB_ID,
     outcome: "completed",
     finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_300,
-    phase: { index: 0, kind: "verify-registry-mismatch", outcome: "ok" },
+    phase: { index: 0, kind: "rate", outcome: "ok" },
     anchoredByRole: "buyer",
   });
   const registryMismatchSeller = makeBundle({
     jobId: VERIFY_REGISTRY_MISMATCH_JOB_ID,
     outcome: "completed",
     finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_300,
-    phase: { index: 0, kind: "verify-registry-mismatch", outcome: "ok" },
+    phase: { index: 0, kind: "rate", outcome: "ok" },
     anchoredByRole: "seller",
     railRegistryVersion: 2,
   });
