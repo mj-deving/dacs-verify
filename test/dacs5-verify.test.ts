@@ -15,10 +15,13 @@ import {
 import {
   VERIFY_BUYER_CLAIM,
   VERIFY_SELLER_CLAIM,
+  VERIFY_ADVISORY_SKEW_JOB_ID,
   VERIFY_DIVERGENT_JOB_ID,
   VERIFY_ONE_SIDED_JOB_ID,
   VERIFY_MISANCHORED_JOB_ID,
   VERIFY_MIXEDROLE_JOB_ID,
+  VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
+  VERIFY_REGISTRY_MISMATCH_JOB_ID,
   VERIFY_REPUTATION_COMPUTED_AT,
   VERIFY_REPUTATION_WINDOW_END,
   VERIFY_REPUTATION_WINDOW_START,
@@ -91,6 +94,34 @@ test("consumeBundles keeps divergent bundles for per-party policy", () => {
   expect(result.verdict).not.toBe("disputed");
   expect(result.buyer?.decision).toBe("pass");
   expect(result.seller?.decision).toBe("pass");
+  expect(bundleHash(result.buyer!.bundle)).not.toBe(bundleHash(result.seller!.bundle));
+});
+
+test("consumeBundles treats phaseSummary index-set mismatch as divergent", () => {
+  const result = consumeBundles(VERIFY_PHASE_INDEX_MISMATCH_JOB_ID, fixtures.fetchPhaseIndexMismatch, fixtures.resolveKey, VERIFY_EXPECTED);
+  expect(result.verdict).toBe("divergent");
+  expect(result.buyer?.decision).toBe("pass");
+  expect(result.seller?.decision).toBe("pass");
+  expect(result.buyer!.bundle.phaseSummary.map((phase) => phase.index)).toEqual([0]);
+  expect(result.seller!.bundle.phaseSummary.map((phase) => phase.index)).toEqual([1]);
+});
+
+test("consumeBundles treats advisory skew as unified", () => {
+  const result = consumeBundles(VERIFY_ADVISORY_SKEW_JOB_ID, fixtures.fetchAdvisorySkew, fixtures.resolveKey, VERIFY_EXPECTED);
+  expect(result.verdict).toBe("unified");
+  expect(result.buyer?.decision).toBe("pass");
+  expect(result.seller?.decision).toBe("pass");
+  expect(bundleHash(result.buyer!.bundle)).not.toBe(bundleHash(result.seller!.bundle));
+  expect(result.seller!.bundle.ratingRefs).toHaveLength(1);
+});
+
+test("consumeBundles keeps non-advisory signed-field mismatches divergent", () => {
+  const result = consumeBundles(VERIFY_REGISTRY_MISMATCH_JOB_ID, fixtures.fetchRegistryMismatch, fixtures.resolveKey, VERIFY_EXPECTED);
+  expect(result.verdict).toBe("divergent");
+  expect(result.buyer?.decision).toBe("pass");
+  expect(result.seller?.decision).toBe("pass");
+  expect(result.buyer!.bundle.railRegistryVersion).toBe(1);
+  expect(result.seller!.bundle.railRegistryVersion).toBe(2);
   expect(bundleHash(result.buyer!.bundle)).not.toBe(bundleHash(result.seller!.bundle));
 });
 

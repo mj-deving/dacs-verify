@@ -25,6 +25,9 @@ const BUYER_SEED = "a1".repeat(32);
 const SELLER_SEED = "c3".repeat(32);
 
 export const VERIFY_DIVERGENT_JOB_ID = "DACS-VERIFY-0004";
+export const VERIFY_PHASE_INDEX_MISMATCH_JOB_ID = "DACS-VERIFY-L3-PHASE-INDEX-MISMATCH";
+export const VERIFY_ADVISORY_SKEW_JOB_ID = "DACS-VERIFY-L3-ADVISORY-SKEW";
+export const VERIFY_REGISTRY_MISMATCH_JOB_ID = "DACS-VERIFY-L3-REGISTRY-MISMATCH";
 export const VERIFY_ONE_SIDED_JOB_ID = "DACS-VERIFY-L3-ONE-SIDED";
 export const VERIFY_REPUTATION_WINDOW_START = 1_780_050_000_000;
 export const VERIFY_REPUTATION_WINDOW_END = 1_780_050_010_000;
@@ -70,6 +73,9 @@ function makeBundle(input: {
   anchoredByRole?: AnchoredByRole;
   ratingRefs?: AttestationRef[];
   roleClaims?: { buyer: string; seller: string };
+  agreementCommittedAt?: number;
+  evidenceCheckedAt?: number;
+  railRegistryVersion?: number;
 }): AttestationBundle {
   const buyer = keypairFromSeed(BUYER_SEED);
   const seller = keypairFromSeed(SELLER_SEED);
@@ -100,14 +106,14 @@ function makeBundle(input: {
     buyer: roleClaims.buyer,
     seller: roleClaims.seller,
     listingRef,
-    committedAt: input.finalisedAt - 5_000,
+    committedAt: input.agreementCommittedAt ?? input.finalisedAt - 5_000,
   });
   const evidenceRef = ref("dacs-4-evidence", `evidence-${input.jobId}`, {
     evidenceVersion: "1",
     jobId: input.jobId,
-    phaseIndex: 0,
+    phaseIndex: input.phase.index,
     outcome: input.phase.outcome,
-    checkedAt: input.finalisedAt - 1_000,
+    checkedAt: input.evidenceCheckedAt ?? input.finalisedAt - 1_000,
   });
   const unsigned: Omit<AttestationBundle, "signatures"> = {
     bundleVersion: "1",
@@ -133,7 +139,7 @@ function makeBundle(input: {
     vetRecords: [],
     settlementEvidence: [evidenceRef],
     recipeRegistryVersion: 1,
-    railRegistryVersion: 1,
+    railRegistryVersion: input.railRegistryVersion ?? 1,
     finalisedAt: input.finalisedAt,
   };
   const signerChoice = input.signers ?? "both";
@@ -155,6 +161,12 @@ export function makeBundleFetch(jobId: string, buyer?: AttestationBundle, seller
 export function buildSessionBundleFixtures(): {
   divergentBuyer: AttestationBundle;
   divergentSeller: AttestationBundle;
+  phaseIndexMismatchBuyer: AttestationBundle;
+  phaseIndexMismatchSeller: AttestationBundle;
+  advisorySkewBuyer: AttestationBundle;
+  advisorySkewSeller: AttestationBundle;
+  registryMismatchBuyer: AttestationBundle;
+  registryMismatchSeller: AttestationBundle;
   oneSidedBuyer: AttestationBundle;
   misanchoredSellerBundle: AttestationBundle;
   reputationBundles: AttestationBundle[];
@@ -168,6 +180,9 @@ export function buildSessionBundleFixtures(): {
   seeds: Record<string, string>;
   resolveKey: BundleKeyResolver;
   fetchDivergent: BundleFetch;
+  fetchPhaseIndexMismatch: BundleFetch;
+  fetchAdvisorySkew: BundleFetch;
+  fetchRegistryMismatch: BundleFetch;
   fetchUnified: BundleFetch;
   fetchOneSided: BundleFetch;
   fetchAbsent: BundleFetch;
@@ -178,6 +193,67 @@ export function buildSessionBundleFixtures(): {
   const seller = keypairFromSeed(SELLER_SEED);
   const divergentBuyer = buildAttestationBundle0004().bundle;
   const divergentSeller = buildAttestationBundle0004Seller().bundle;
+  const phaseIndexMismatchBuyer = makeBundle({
+    jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
+    outcome: "completed",
+    finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_100,
+    phase: { index: 0, kind: "verify-phase-index-mismatch", outcome: "ok" },
+    anchoredByRole: "buyer",
+  });
+  const phaseIndexMismatchSeller = makeBundle({
+    jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
+    outcome: "completed",
+    finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_100,
+    phase: { index: 1, kind: "verify-phase-index-mismatch", outcome: "ok" },
+    anchoredByRole: "seller",
+  });
+  const advisorySkewFinalisedAt = VERIFY_REPUTATION_WINDOW_START + 1_200;
+  const advisorySkewAgreementCommittedAt = advisorySkewFinalisedAt - 5_000;
+  const advisorySkewEvidenceCheckedAt = advisorySkewFinalisedAt - 1_000;
+  const advisoryRatingRecord = {
+    ratingVersion: "1",
+    jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
+    rater: VERIFY_SELLER_CLAIM,
+    target: VERIFY_BUYER_CLAIM,
+    targetRole: "buyer",
+    value: 4,
+    ratedAt: advisorySkewFinalisedAt + 1,
+    signature: { algorithm: "ed25519", signer: VERIFY_SELLER_CLAIM, value: "advisory-rating-sig" },
+  };
+  const advisorySkewBuyer = makeBundle({
+    jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
+    outcome: "completed",
+    finalisedAt: advisorySkewFinalisedAt,
+    phase: { index: 0, kind: "verify-advisory-skew", outcome: "ok" },
+    anchoredByRole: "buyer",
+    agreementCommittedAt: advisorySkewAgreementCommittedAt,
+    evidenceCheckedAt: advisorySkewEvidenceCheckedAt,
+  });
+  const advisorySkewSeller = makeBundle({
+    jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
+    outcome: "completed",
+    finalisedAt: advisorySkewFinalisedAt + 111,
+    phase: { index: 0, kind: "verify-advisory-skew", outcome: "ok" },
+    anchoredByRole: "seller",
+    ratingRefs: [ref("dacs-5-rating", "advisory-rating", advisoryRatingRecord)],
+    agreementCommittedAt: advisorySkewAgreementCommittedAt,
+    evidenceCheckedAt: advisorySkewEvidenceCheckedAt,
+  });
+  const registryMismatchBuyer = makeBundle({
+    jobId: VERIFY_REGISTRY_MISMATCH_JOB_ID,
+    outcome: "completed",
+    finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_300,
+    phase: { index: 0, kind: "verify-registry-mismatch", outcome: "ok" },
+    anchoredByRole: "buyer",
+  });
+  const registryMismatchSeller = makeBundle({
+    jobId: VERIFY_REGISTRY_MISMATCH_JOB_ID,
+    outcome: "completed",
+    finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_300,
+    phase: { index: 0, kind: "verify-registry-mismatch", outcome: "ok" },
+    anchoredByRole: "seller",
+    railRegistryVersion: 2,
+  });
   const oneSidedBuyer = makeBundle({
     jobId: VERIFY_ONE_SIDED_JOB_ID,
     outcome: "aborted-by-other",
@@ -314,6 +390,12 @@ export function buildSessionBundleFixtures(): {
   return {
     divergentBuyer,
     divergentSeller,
+    phaseIndexMismatchBuyer,
+    phaseIndexMismatchSeller,
+    advisorySkewBuyer,
+    advisorySkewSeller,
+    registryMismatchBuyer,
+    registryMismatchSeller,
     oneSidedBuyer,
     misanchoredSellerBundle,
     reputationBundles,
@@ -327,6 +409,9 @@ export function buildSessionBundleFixtures(): {
     seeds: { buyer: BUYER_SEED, seller: SELLER_SEED },
     resolveKey,
     fetchDivergent: makeBundleFetch(VERIFY_DIVERGENT_JOB_ID, divergentBuyer, divergentSeller),
+    fetchPhaseIndexMismatch: makeBundleFetch(VERIFY_PHASE_INDEX_MISMATCH_JOB_ID, phaseIndexMismatchBuyer, phaseIndexMismatchSeller),
+    fetchAdvisorySkew: makeBundleFetch(VERIFY_ADVISORY_SKEW_JOB_ID, advisorySkewBuyer, advisorySkewSeller),
+    fetchRegistryMismatch: makeBundleFetch(VERIFY_REGISTRY_MISMATCH_JOB_ID, registryMismatchBuyer, registryMismatchSeller),
     // §10.4.2/§10.4.3(c) (R5-1): the unified happy path is TWO canonically-EQUAL copies that differ ONLY in the unhashed
     // `anchoredByRole` — the buyer anchors its copy at the buyer address, the seller anchors its (same-hash, same-signatures)
     // copy at the seller address. The signed scope excludes anchoredByRole, so the buyer copy's signatures verify on the
@@ -339,6 +424,12 @@ export function buildSessionBundleFixtures(): {
     decisions: {
       divergentBuyer: verifyBundle(divergentBuyer, resolveKey),
       divergentSeller: verifyBundle(divergentSeller, resolveKey),
+      phaseIndexMismatchBuyer: verifyBundle(phaseIndexMismatchBuyer, resolveKey),
+      phaseIndexMismatchSeller: verifyBundle(phaseIndexMismatchSeller, resolveKey),
+      advisorySkewBuyer: verifyBundle(advisorySkewBuyer, resolveKey),
+      advisorySkewSeller: verifyBundle(advisorySkewSeller, resolveKey),
+      registryMismatchBuyer: verifyBundle(registryMismatchBuyer, resolveKey),
+      registryMismatchSeller: verifyBundle(registryMismatchSeller, resolveKey),
       oneSidedBuyer: verifyBundle(oneSidedBuyer, resolveKey),
       reputationAll: reputationBundles.every((bundle) => verifyBundle(bundle, resolveKey) === "pass") ? "pass" : "fail",
       // the mixed-role seller-anchored bundle must independently verify — derive() assumes verified inputs (§10.4.3),

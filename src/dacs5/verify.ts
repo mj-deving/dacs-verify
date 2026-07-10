@@ -1,4 +1,5 @@
 import { sha256Hex } from "../hash.ts";
+import { canonicalize } from "../canonicalize.ts";
 import { type ClaimReference } from "../dacs1.ts";
 import { cf4Encode } from "../logical-address.ts";
 import type { PriceTerm } from "../dacs4/settlement.ts";
@@ -201,8 +202,8 @@ export function consumeBundles(
   const buyerEntry = { bundle: buyer, decision: buyerDecision! };
   const sellerEntry = { bundle: seller, decision: sellerDecision! };
 
-  if (bundleHash(buyer) === bundleHash(seller)) {
-    // §10.4.3(c): canonically equal bundles are the unified session bundle.
+  if (!canonicallyDiverges(buyer, seller)) {
+    // §10.4.3(c): non-divergent copies are the unified session bundle, even when advisory fields differ.
     return { verdict: "unified", buyer: buyerEntry, seller: sellerEntry };
   }
 
@@ -312,19 +313,28 @@ function hasRequiredTerminalSigners(bundle: AttestationBundle): boolean {
 // failed-perm↔failed-counterparty) maps one frame onto the other. `selfCopy` is already in the scored party's frame, so
 // the counterparty copy AGREES iff `selfCopy.outcome === perspectiveFlip(counterpartyCopy.outcome)`. Comparing raw
 // `outcome` would falsely flag a perspective-consistent abort pair (seller `aborted-by-self` vs buyer `aborted-by-other`)
-// as a dispute and wrongly exclude a clean session. The `phaseSummary` IS in the §10.4.1 shared canonical form (both
-// anchorers record it identically — it is a factual description of each phase, not a per-party fault attribution), so it
-// is compared RAW: any difference in a phase entry's `outcome` or `errorClass` is a genuine contradiction → divergence.
-// Advisory-field skew (finalisedAt, ratingRefs, amendment order) is intentionally NOT compared — it is not a divergence.
+// as a dispute and wrongly exclude a clean session. Only explicit advisory/per-copy fields are normalised away:
+// `anchoredByRole`, `signatures`, `finalisedAt`, `ratingRefs`, and amendment ordering. Other signed fields remain in the
+// comparison so a listing/agreement/party/registry/evidence mismatch cannot hide inside a "unified" verdict.
+function divergenceComparable(bundle: AttestationBundle, outcome: BundleOutcome): Record<string, unknown> | null {
+  const phases = new Map(bundle.phaseSummary.map((phase) => [phase.index, phase]));
+  if (phases.size !== bundle.phaseSummary.length) return null;
+  const { signatures: _signatures, anchoredByRole: _anchoredByRole, finalisedAt: _finalisedAt, ratingRefs: _ratingRefs, ...rest } = bundle;
+  return {
+    ...rest,
+    outcome,
+    phaseSummary: [...phases.values()].sort((a, b) => a.index - b.index),
+    ...(rest.amendments === undefined
+      ? {}
+      : { amendments: [...rest.amendments].sort((a, b) => canonicalize(a).localeCompare(canonicalize(b))) }),
+  };
+}
+
 function canonicallyDiverges(selfCopy: AttestationBundle, counterpartyCopy: AttestationBundle): boolean {
-  if (selfCopy.outcome !== perspectiveFlip(counterpartyCopy.outcome)) return true;
-  if (selfCopy.phaseSummary.length !== counterpartyCopy.phaseSummary.length) return true;
-  for (let i = 0; i < selfCopy.phaseSummary.length; i += 1) {
-    const left = selfCopy.phaseSummary[i]!;
-    const right = counterpartyCopy.phaseSummary[i]!;
-    if (left.outcome !== right.outcome || left.errorClass !== right.errorClass) return true;
-  }
-  return false;
+  const left = divergenceComparable(selfCopy, selfCopy.outcome);
+  const right = divergenceComparable(counterpartyCopy, perspectiveFlip(counterpartyCopy.outcome));
+  if (left === null || right === null) return true;
+  return canonicalize(left) !== canonicalize(right);
 }
 
 export function deriveReputation(

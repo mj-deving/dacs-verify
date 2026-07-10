@@ -130,10 +130,12 @@ import {
 import {
   VERIFY_BUYER_CLAIM,
   VERIFY_SELLER_CLAIM,
+  VERIFY_ADVISORY_SKEW_JOB_ID,
   VERIFY_DIVERGENT_JOB_ID,
   VERIFY_ONE_SIDED_JOB_ID,
   VERIFY_MISANCHORED_JOB_ID,
   VERIFY_MIXEDROLE_JOB_ID,
+  VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
   VERIFY_REPUTATION_COMPUTED_AT,
   VERIFY_REPUTATION_WINDOW_END,
   VERIFY_REPUTATION_WINDOW_START,
@@ -1732,6 +1734,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
   const crossSessionVerdict = consumeBundles("DACS-VERIFY-L3-OTHER-JOB", crossSessionFetch, verifySession.resolveKey, VERIFY_EXPECTED).verdict;
   // §10.4.2/§10.11: a seller-signed bundle placed at the BUYER address is rejected (role-signature binding) → absent.
   const misanchoredVerdict = consumeBundles(VERIFY_MISANCHORED_JOB_ID, verifySession.fetchMisanchored, verifySession.resolveKey, VERIFY_EXPECTED).verdict;
+  const phaseIndexMismatchVerdict = consumeBundles(VERIFY_PHASE_INDEX_MISMATCH_JOB_ID, verifySession.fetchPhaseIndexMismatch, verifySession.resolveKey, VERIFY_EXPECTED).verdict;
+  const advisorySkewVerdict = consumeBundles(VERIFY_ADVISORY_SKEW_JOB_ID, verifySession.fetchAdvisorySkew, verifySession.resolveKey, VERIFY_EXPECTED).verdict;
   // §10.4.2: a present side whose role signature does NOT verify (here the buyer claim resolves to the seller's key) is
   // not classified present → absent; unverifiable storage data must not drive abort provenance.
   const wrongBuyerKey = new Uint8Array(Buffer.from(verifySession.publicKeys[VERIFY_SELLER_CLAIM]!, "base64url"));
@@ -1850,6 +1854,26 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       notOutcomeEnum: !["completed", "failed-perm", "failed-counterparty", "failed-substrate", "aborted-by-self", "aborted-by-other"].includes(consumeBundles(VERIFY_DIVERGENT_JOB_ID, verifySession.fetchDivergent, verifySession.resolveKey, VERIFY_EXPECTED).verdict),
     },
     { verdict: "divergent", buyerDecision: "pass", sellerDecision: "pass", distinctHashes: true, notOutcomeEnum: true });
+  rec("verify-consume-phase-index-mismatch-divergent", "verify", "§10.4.3(d)", "phaseSummary entry set mismatch (buyer index 0, seller index 1) → divergent",
+    {
+      verdict: consumeBundles(VERIFY_PHASE_INDEX_MISMATCH_JOB_ID, verifySession.fetchPhaseIndexMismatch, verifySession.resolveKey, VERIFY_EXPECTED).verdict,
+      buyerDecision: consumeBundles(VERIFY_PHASE_INDEX_MISMATCH_JOB_ID, verifySession.fetchPhaseIndexMismatch, verifySession.resolveKey, VERIFY_EXPECTED).buyer?.decision,
+      sellerDecision: consumeBundles(VERIFY_PHASE_INDEX_MISMATCH_JOB_ID, verifySession.fetchPhaseIndexMismatch, verifySession.resolveKey, VERIFY_EXPECTED).seller?.decision,
+      buyerPhaseIndexes: verifySession.phaseIndexMismatchBuyer.phaseSummary.map((phase) => phase.index),
+      sellerPhaseIndexes: verifySession.phaseIndexMismatchSeller.phaseSummary.map((phase) => phase.index),
+      distinctHashes: bundleHash(verifySession.phaseIndexMismatchBuyer) !== bundleHash(verifySession.phaseIndexMismatchSeller),
+    },
+    { verdict: "divergent", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseIndexes: [0], sellerPhaseIndexes: [1], distinctHashes: true });
+  rec("verify-consume-advisory-skew-unified", "verify", "§10.4.3(c)", "advisory-only skew (finalisedAt / one-sided ratingRefs) → unified",
+    {
+      verdict: consumeBundles(VERIFY_ADVISORY_SKEW_JOB_ID, verifySession.fetchAdvisorySkew, verifySession.resolveKey, VERIFY_EXPECTED).verdict,
+      buyerDecision: consumeBundles(VERIFY_ADVISORY_SKEW_JOB_ID, verifySession.fetchAdvisorySkew, verifySession.resolveKey, VERIFY_EXPECTED).buyer?.decision,
+      sellerDecision: consumeBundles(VERIFY_ADVISORY_SKEW_JOB_ID, verifySession.fetchAdvisorySkew, verifySession.resolveKey, VERIFY_EXPECTED).seller?.decision,
+      distinctHashes: bundleHash(verifySession.advisorySkewBuyer) !== bundleHash(verifySession.advisorySkewSeller),
+      buyerRatingRefs: verifySession.advisorySkewBuyer.ratingRefs?.length ?? 0,
+      sellerRatingRefs: verifySession.advisorySkewSeller.ratingRefs?.length ?? 0,
+    },
+    { verdict: "unified", buyerDecision: "pass", sellerDecision: "pass", distinctHashes: true, buyerRatingRefs: 0, sellerRatingRefs: 1 });
 
   rec("verify-st-draft-vet-legal", "verify", "§10.3.1 ST-1", "draft → vet-pending is legal",
     isLegalTransition("draft", "vet-pending"), true);
@@ -2013,6 +2037,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
     },
     jobIds: {
       divergent: VERIFY_DIVERGENT_JOB_ID,
+      phaseIndexMismatch: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
+      advisorySkew: VERIFY_ADVISORY_SKEW_JOB_ID,
       oneSided: VERIFY_ONE_SIDED_JOB_ID,
       reputation: verifySession.reputationBundles.map((bundle) => bundle.jobId),
     },
@@ -2022,6 +2048,8 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       unified: "unified",
       oneSided: "one-sided",
       divergent: "divergent",
+      phaseIndexMismatch: phaseIndexMismatchVerdict,
+      advisorySkew: advisorySkewVerdict,
     },
     reputation: {
       windowStart: VERIFY_REPUTATION_WINDOW_START,
@@ -2080,7 +2108,7 @@ if (EMIT) {
     generator: "github.com/mj-deving/dacs-verify",
     note: "Proposed / non-normative. Run: bun conformance/run.ts",
     surfaces: {
-      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 61 settlement + 47 verify + 32 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
+      golden: `${goldenN} vectors — 7 canonicalize + 5 decimal + 5 signing + 16 dacs1 + 2 addressing + 4 bundle + 17 dispute/disclosure (8 dispute + 9 disclosure) + 61 settlement + 49 verify + 32 vet + 11 negotiate + 12 governance; byte-stable and reference-verifier-accepted.`,
       candidate: `${candidateN} vectors.`,
     },
     cases: cases.map((c) => ({ id: c.id, area: c.area, spec: c.spec, summary: c.summary, status: statusOf(c.area), reason: reasonOf(c.area), want: c.want })),
