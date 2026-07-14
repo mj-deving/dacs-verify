@@ -32,7 +32,7 @@
       "phaseSummary": [
         {
           "index": 0,
-          "kind": "settle",
+          "kind": "deliver-storage-program",
           "outcome": "ok"
         }
       ],
@@ -51,12 +51,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "G-LIa4nzkET1ogwPnm9UW9-O3X1ED45K0jihswIO7LMPLfHlcUm7iDJWc9tRKf5sRhmAMkjHU6q-SvxXvx89DQ"
+          "value": "Hg0uKx9C11R4lM0ykNIhCjX7xNkJhHwwaUpIc4nJkqo_6XnOEaMSDDPPRXusfjjKN-cb3SH1l_AJiO7E-Ly-AA"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "nP1sHFa8UQdYkyzaZ3tBuUpQQgXX90QnwBTtAT30GGZxlzLU1BizMLBylo3BBRzrPVyn1uqSv8Q5LG90fqtUAw"
+          "value": "2BfG98tD_eE1H8Zn6EGT8Gw25UbmXsRUt9IZz82DUQve2b0fvC4lekQWPt1LO9kjJ08AN3VxTVh_hiH4i9gNBQ"
         }
       ]
     },
@@ -90,7 +90,7 @@
       "phaseSummary": [
         {
           "index": 1,
-          "kind": "settle",
+          "kind": "deliver-storage-program",
           "outcome": "ok"
         }
       ],
@@ -109,12 +109,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "3GqO795WC8Cyqt4cipN8Gh1cBQ-DxGd0hldTYhpgKL-eos6FeV3vKB1mpS7U33udjMljnQC-ZRmXrblLdVXeDA"
+          "value": "cXj-LWRpCmfIBK3fezeLmAxHONCwYJJxLaKbjVypOkpS0omuPvef0K7j9s53A81Ua4cHhlDMBLgXkJ91YsUICA"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "SjES2LoXfnCRa42JfBI-vdmWEENWqOvvD6utyVhcDOOOjxJ0ISXOvdZJf848W3Z8MQ9l01jQw73pypugBm0TDw"
+          "value": "hnLCf-TFYWveSZk2UjBC0ktWk2o5uqu3xXmAW9BnWO3zktjab_9qrWMz4MbBh6HEn4XW3zITVHHlulyoRBhSAA"
         }
       ]
     }
@@ -151,7 +151,7 @@
       "phaseSummary": [
         {
           "index": 0,
-          "kind": "settle",
+          "kind": "deliver-storage-program",
           "outcome": "ok",
           "attestationRef": {
             "kind": "dacs-4-evidence",
@@ -175,12 +175,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "G8e202kHmGMCXQu9ZTMMuLXQACa30cXzPPbva3UrDYsNGJ9t7mGPm4WfvuaSo5bpgFcjz4jbgk6BpX7-jjF_Bw"
+          "value": "AGCpRvweyeUwcyRnTfyoVVKkORxOdKuE88UvFKLOOuxHOGmi456qftuzpZrOUYyUsTwzt5z_-jupgFB0myx4CA"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "U-SK6NloFucg691n0m5u26cLxQOCSTdAULo4APtDuKQaIlr7Gx9-ki451A55rH_QJyg3xeCNw_rjtw7RAS8SCQ"
+          "value": "RoPGGM0sLYKNg-g0aekNcT3ySINVM2QeztLF9sQxN0_P-FhXD7tTg-b2JITiVPslOjkfHYsh_6yYH64AbjQzDA"
         }
       ]
     },
@@ -221,7 +221,7 @@
       "phaseSummary": [
         {
           "index": 0,
-          "kind": "settle",
+          "kind": "deliver-storage-program",
           "outcome": "ok",
           "attestationRef": {
             "kind": "dacs-4-evidence",
@@ -245,12 +245,12 @@
         {
           "party": "did:demos:buyer",
           "algorithm": "ed25519",
-          "value": "mQT0K4abknLCdhccHmvJPsRxmoaR-NdZBDrFVzaxD0GEkD4cXoXBtJ8boSp-Z9R4wB5B1UsQucVugtLU_noWBA"
+          "value": "E56AesDucQGlMT2TzGlWgdO9YKI_qLqE4sHRpi1XV4EzPFNBvKwrd5ax3s9Jif_B3k4aDikKE59rKl4bo08RBQ"
         },
         {
           "party": "did:demos:seller",
           "algorithm": "ed25519",
-          "value": "JYYvSo3UAIkO-ZgqGWvRUgtwvR4SsWEzrdGDeeCK6b62Eql3iKlX1_FpbeGLe-UsZzb5cCQoODhtvc--C5ygDQ"
+          "value": "zH6jp9cutFznATn20YCgXa2VEx4wD8Dzo7wbUkJf8ZMiPme0j8owYv73GtSPuMQfA4993lql3VtT1WknS5ScBQ"
         }
       ]
     }

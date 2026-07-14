@@ -1865,7 +1865,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       sellerPhaseKinds: verifySession.phaseIndexMismatchSeller.phaseSummary.map((phase) => phase.kind),
       distinctHashes: bundleHash(verifySession.phaseIndexMismatchBuyer) !== bundleHash(verifySession.phaseIndexMismatchSeller),
     },
-    { verdict: "divergent", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseIndexes: [0], sellerPhaseIndexes: [1], buyerPhaseKinds: ["settle"], sellerPhaseKinds: ["settle"], distinctHashes: true });
+    { verdict: "divergent", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseIndexes: [0], sellerPhaseIndexes: [1], buyerPhaseKinds: ["deliver-storage-program"], sellerPhaseKinds: ["deliver-storage-program"], distinctHashes: true });
   rec("verify-consume-advisory-skew-unified", "verify", "§10.4.3(c)", "advisory-only skew (finalisedAt / one-sided ratingRefs) → unified",
     {
       verdict: consumeBundles(VERIFY_ADVISORY_SKEW_JOB_ID, verifySession.fetchAdvisorySkew, verifySession.resolveKey, VERIFY_EXPECTED).verdict,
@@ -1877,7 +1877,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       buyerRatingRefs: verifySession.advisorySkewBuyer.ratingRefs?.length ?? 0,
       sellerRatingRefs: verifySession.advisorySkewSeller.ratingRefs?.length ?? 0,
     },
-    { verdict: "unified", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseKinds: ["settle"], sellerPhaseKinds: ["settle"], distinctHashes: true, buyerRatingRefs: 0, sellerRatingRefs: 1 });
+    { verdict: "unified", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseKinds: ["deliver-storage-program"], sellerPhaseKinds: ["deliver-storage-program"], distinctHashes: true, buyerRatingRefs: 0, sellerRatingRefs: 1 });
 
   rec("verify-st-draft-vet-legal", "verify", "§10.3.1 ST-1", "draft → vet-pending is legal",
     isLegalTransition("draft", "vet-pending"), true);
