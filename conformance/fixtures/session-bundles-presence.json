@@ -1,0 +1,266 @@
+{
+  "note": "Static DACS-5 presence/advisory fixture pack generated from github.com/mj-deving/dacs-verify examples/session-bundles.ts.",
+  "phaseIndexMismatch": {
+    "jobId": "DACS-VERIFY-L3-PHASE-INDEX-MISMATCH",
+    "buyer": {
+      "bundleVersion": "1",
+      "jobId": "DACS-VERIFY-L3-PHASE-INDEX-MISMATCH",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-dacs-verify-l3-phase-index-mismatch",
+        "version": 1,
+        "contentHash": "5a0c1a9471404ed5e0d9a44e74a900b51059cad4e0511cdc0e0a81ecb23c7da9"
+      },
+      "agreementRef": {
+        "kind": "dacs-3-agreement",
+        "id": "agreement-DACS-VERIFY-L3-PHASE-INDEX-MISMATCH",
+        "contentHash": "fa92c450a2ec1f970b98944a7c8239f2e6020afaa830f8e42a79b7efb21fbeb5"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+          "primaryClaim": "did:demos:buyer"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+          "primaryClaim": "did:demos:seller"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "settle",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "evidence-DACS-VERIFY-L3-PHASE-INDEX-MISMATCH",
+          "contentHash": "adfbcf73c56ea154b43abd8f35d2e6a44e101457fc9f600e33d5896465bba3cb"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780050001100,
+      "signatures": [
+        {
+          "party": "did:demos:buyer",
+          "algorithm": "ed25519",
+          "value": "G-LIa4nzkET1ogwPnm9UW9-O3X1ED45K0jihswIO7LMPLfHlcUm7iDJWc9tRKf5sRhmAMkjHU6q-SvxXvx89DQ"
+        },
+        {
+          "party": "did:demos:seller",
+          "algorithm": "ed25519",
+          "value": "nP1sHFa8UQdYkyzaZ3tBuUpQQgXX90QnwBTtAT30GGZxlzLU1BizMLBylo3BBRzrPVyn1uqSv8Q5LG90fqtUAw"
+        }
+      ]
+    },
+    "seller": {
+      "bundleVersion": "1",
+      "jobId": "DACS-VERIFY-L3-PHASE-INDEX-MISMATCH",
+      "outcome": "completed",
+      "anchoredByRole": "seller",
+      "listingRef": {
+        "listingId": "listing-dacs-verify-l3-phase-index-mismatch",
+        "version": 1,
+        "contentHash": "5a0c1a9471404ed5e0d9a44e74a900b51059cad4e0511cdc0e0a81ecb23c7da9"
+      },
+      "agreementRef": {
+        "kind": "dacs-3-agreement",
+        "id": "agreement-DACS-VERIFY-L3-PHASE-INDEX-MISMATCH",
+        "contentHash": "fa92c450a2ec1f970b98944a7c8239f2e6020afaa830f8e42a79b7efb21fbeb5"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+          "primaryClaim": "did:demos:buyer"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+          "primaryClaim": "did:demos:seller"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 1,
+          "kind": "settle",
+          "outcome": "ok"
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "evidence-DACS-VERIFY-L3-PHASE-INDEX-MISMATCH",
+          "contentHash": "adfbcf73c56ea154b43abd8f35d2e6a44e101457fc9f600e33d5896465bba3cb"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780050001100,
+      "signatures": [
+        {
+          "party": "did:demos:buyer",
+          "algorithm": "ed25519",
+          "value": "3GqO795WC8Cyqt4cipN8Gh1cBQ-DxGd0hldTYhpgKL-eos6FeV3vKB1mpS7U33udjMljnQC-ZRmXrblLdVXeDA"
+        },
+        {
+          "party": "did:demos:seller",
+          "algorithm": "ed25519",
+          "value": "SjES2LoXfnCRa42JfBI-vdmWEENWqOvvD6utyVhcDOOOjxJ0ISXOvdZJf848W3Z8MQ9l01jQw73pypugBm0TDw"
+        }
+      ]
+    }
+  },
+  "advisorySkew": {
+    "jobId": "DACS-VERIFY-L3-ADVISORY-SKEW",
+    "buyer": {
+      "bundleVersion": "1",
+      "jobId": "DACS-VERIFY-L3-ADVISORY-SKEW",
+      "outcome": "completed",
+      "anchoredByRole": "buyer",
+      "listingRef": {
+        "listingId": "listing-dacs-verify-l3-advisory-skew",
+        "version": 1,
+        "contentHash": "3d6e2752b139d2cccb6ca03896658f01aa75292b016cbee52db9d19cd04188e4"
+      },
+      "agreementRef": {
+        "kind": "dacs-3-agreement",
+        "id": "agreement-DACS-VERIFY-L3-ADVISORY-SKEW",
+        "contentHash": "a8ea4665b5e134d8f95736d26762ff65c0c424ba5b311e397b005d9f70d7bad9"
+      },
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+          "primaryClaim": "did:demos:buyer"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+          "primaryClaim": "did:demos:seller"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "settle",
+          "outcome": "ok",
+          "attestationRef": {
+            "kind": "dacs-4-evidence",
+            "id": "evidence-DACS-VERIFY-L3-ADVISORY-SKEW",
+            "contentHash": "082761cb3e57f11f0febf0118ea9c0a0a660ed864e5fe001a8ed30bac5f654b7"
+          }
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "evidence-DACS-VERIFY-L3-ADVISORY-SKEW",
+          "contentHash": "082761cb3e57f11f0febf0118ea9c0a0a660ed864e5fe001a8ed30bac5f654b7"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780050001200,
+      "signatures": [
+        {
+          "party": "did:demos:buyer",
+          "algorithm": "ed25519",
+          "value": "G8e202kHmGMCXQu9ZTMMuLXQACa30cXzPPbva3UrDYsNGJ9t7mGPm4WfvuaSo5bpgFcjz4jbgk6BpX7-jjF_Bw"
+        },
+        {
+          "party": "did:demos:seller",
+          "algorithm": "ed25519",
+          "value": "U-SK6NloFucg691n0m5u26cLxQOCSTdAULo4APtDuKQaIlr7Gx9-ki451A55rH_QJyg3xeCNw_rjtw7RAS8SCQ"
+        }
+      ]
+    },
+    "seller": {
+      "bundleVersion": "1",
+      "jobId": "DACS-VERIFY-L3-ADVISORY-SKEW",
+      "outcome": "completed",
+      "anchoredByRole": "seller",
+      "listingRef": {
+        "listingId": "listing-dacs-verify-l3-advisory-skew",
+        "version": 1,
+        "contentHash": "3d6e2752b139d2cccb6ca03896658f01aa75292b016cbee52db9d19cd04188e4"
+      },
+      "agreementRef": {
+        "kind": "dacs-3-agreement",
+        "id": "agreement-DACS-VERIFY-L3-ADVISORY-SKEW",
+        "contentHash": "a8ea4665b5e134d8f95736d26762ff65c0c424ba5b311e397b005d9f70d7bad9"
+      },
+      "ratingRefs": [
+        {
+          "kind": "dacs-5-rating",
+          "id": "advisory-rating",
+          "contentHash": "8b6f5d5adc352b2226e584669e6ca7e730f33e1ee64a64bb8ed727fa7fdeb6d3"
+        }
+      ],
+      "parties": [
+        {
+          "role": "buyer",
+          "bundleHash": "ca7c0f6112544a6ef54f8873161578bd85a54133a48944e6507acf46888d3446",
+          "primaryClaim": "did:demos:buyer"
+        },
+        {
+          "role": "seller",
+          "bundleHash": "b55ea50ff477bc6821c2e48f1c3c4a18c19f92402aa8a48bcd11b97b1a28939a",
+          "primaryClaim": "did:demos:seller"
+        }
+      ],
+      "phaseSummary": [
+        {
+          "index": 0,
+          "kind": "settle",
+          "outcome": "ok",
+          "attestationRef": {
+            "kind": "dacs-4-evidence",
+            "id": "evidence-DACS-VERIFY-L3-ADVISORY-SKEW",
+            "contentHash": "082761cb3e57f11f0febf0118ea9c0a0a660ed864e5fe001a8ed30bac5f654b7"
+          }
+        }
+      ],
+      "vetRecords": [],
+      "settlementEvidence": [
+        {
+          "kind": "dacs-4-evidence",
+          "id": "evidence-DACS-VERIFY-L3-ADVISORY-SKEW",
+          "contentHash": "082761cb3e57f11f0febf0118ea9c0a0a660ed864e5fe001a8ed30bac5f654b7"
+        }
+      ],
+      "recipeRegistryVersion": 1,
+      "railRegistryVersion": 1,
+      "finalisedAt": 1780050001311,
+      "signatures": [
+        {
+          "party": "did:demos:buyer",
+          "algorithm": "ed25519",
+          "value": "mQT0K4abknLCdhccHmvJPsRxmoaR-NdZBDrFVzaxD0GEkD4cXoXBtJ8boSp-Z9R4wB5B1UsQucVugtLU_noWBA"
+        },
+        {
+          "party": "did:demos:seller",
+          "algorithm": "ed25519",
+          "value": "JYYvSo3UAIkO-ZgqGWvRUgtwvR4SsWEzrdGDeeCK6b62Eql3iKlX1_FpbeGLe-UsZzb5cCQoODhtvc--C5ygDQ"
+        }
+      ]
+    }
+  },
+  "publicKeys": {
+    "did:demos:buyer": "vHy8tWNjdfodgkNNRmck2SN39TuYBpXdSdJtDOEiBaU",
+    "did:demos:seller": "1AS8RFZa7buJkVDlsLOzK5RBvwy3iEwzEw2o28J90s8"
+  },
+  "seeds": {
+    "buyer": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "seller": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+  }
+}

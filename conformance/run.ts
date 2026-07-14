@@ -1865,7 +1865,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       sellerPhaseKinds: verifySession.phaseIndexMismatchSeller.phaseSummary.map((phase) => phase.kind),
       distinctHashes: bundleHash(verifySession.phaseIndexMismatchBuyer) !== bundleHash(verifySession.phaseIndexMismatchSeller),
     },
-    { verdict: "divergent", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseIndexes: [0], sellerPhaseIndexes: [1], buyerPhaseKinds: ["rate"], sellerPhaseKinds: ["rate"], distinctHashes: true });
+    { verdict: "divergent", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseIndexes: [0], sellerPhaseIndexes: [1], buyerPhaseKinds: ["settle"], sellerPhaseKinds: ["settle"], distinctHashes: true });
   rec("verify-consume-advisory-skew-unified", "verify", "§10.4.3(c)", "advisory-only skew (finalisedAt / one-sided ratingRefs) → unified",
     {
       verdict: consumeBundles(VERIFY_ADVISORY_SKEW_JOB_ID, verifySession.fetchAdvisorySkew, verifySession.resolveKey, VERIFY_EXPECTED).verdict,
@@ -1877,7 +1877,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       buyerRatingRefs: verifySession.advisorySkewBuyer.ratingRefs?.length ?? 0,
       sellerRatingRefs: verifySession.advisorySkewSeller.ratingRefs?.length ?? 0,
     },
-    { verdict: "unified", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseKinds: ["rate"], sellerPhaseKinds: ["rate"], distinctHashes: true, buyerRatingRefs: 0, sellerRatingRefs: 1 });
+    { verdict: "unified", buyerDecision: "pass", sellerDecision: "pass", buyerPhaseKinds: ["settle"], sellerPhaseKinds: ["settle"], distinctHashes: true, buyerRatingRefs: 0, sellerRatingRefs: 1 });
 
   rec("verify-st-draft-vet-legal", "verify", "§10.3.1 ST-1", "draft → vet-pending is legal",
     isLegalTransition("draft", "vet-pending"), true);
@@ -2037,6 +2037,7 @@ rec("cd1-positivity", "decimal", "§9.3", "amount MUST be > 0",
       divergentBuyer: "conformance/fixtures/attestation-bundle-0004.json",
       divergentSeller: "conformance/fixtures/attestation-bundle-0004-seller.json",
       oneSided: "conformance/fixtures/session-bundle-one-sided.json",
+      presenceSet: "conformance/fixtures/session-bundles-presence.json",
       reputationSet: "conformance/fixtures/session-bundles-reputation.json",
     },
     jobIds: {
@@ -2123,6 +2124,21 @@ if (EMIT) {
   writeFileSync(join(fixturesDir, "attestation-bundle-0004-seller.json"), JSON.stringify(bundle0004Seller.bundle, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "attestation-bundle-htlc9.json"), JSON.stringify(bundleHtlc9.bundle, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "session-bundle-one-sided.json"), JSON.stringify(verifySession.oneSidedBuyer, null, 2) + "\n");
+  writeFileSync(join(fixturesDir, "session-bundles-presence.json"), JSON.stringify({
+    note: "Static DACS-5 presence/advisory fixture pack generated from github.com/mj-deving/dacs-verify examples/session-bundles.ts.",
+    phaseIndexMismatch: {
+      jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
+      buyer: verifySession.phaseIndexMismatchBuyer,
+      seller: verifySession.phaseIndexMismatchSeller,
+    },
+    advisorySkew: {
+      jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
+      buyer: verifySession.advisorySkewBuyer,
+      seller: verifySession.advisorySkewSeller,
+    },
+    publicKeys: verifySession.publicKeys,
+    seeds: verifySession.seeds,
+  }, null, 2) + "\n");
   writeFileSync(join(fixturesDir, "session-bundles-reputation.json"), JSON.stringify({
     windowStart: VERIFY_REPUTATION_WINDOW_START,
     windowEnd: VERIFY_REPUTATION_WINDOW_END,

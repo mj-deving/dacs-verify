@@ -72,6 +72,8 @@ function makeBundle(input: {
   signers?: "both" | "buyer" | "seller";
   anchoredByRole?: AnchoredByRole;
   ratingRefs?: AttestationRef[];
+  evidenceRef?: AttestationRef;
+  phaseAttestationRef?: AttestationRef | null;
   roleClaims?: { buyer: string; seller: string };
   agreementCommittedAt?: number;
   evidenceCheckedAt?: number;
@@ -108,13 +110,16 @@ function makeBundle(input: {
     listingRef,
     committedAt: input.agreementCommittedAt ?? input.finalisedAt - 5_000,
   });
-  const evidenceRef = ref("dacs-4-evidence", `evidence-${input.jobId}`, {
+  const evidenceRef = input.evidenceRef ?? ref("dacs-4-evidence", `evidence-${input.jobId}`, {
     evidenceVersion: "1",
     jobId: input.jobId,
     phaseIndex: input.phase.index,
     outcome: input.phase.outcome,
     checkedAt: input.evidenceCheckedAt ?? input.finalisedAt - 1_000,
   });
+  const phaseAttestationRef = input.phaseAttestationRef === undefined
+    ? evidenceRef
+    : input.phaseAttestationRef;
   const unsigned: Omit<AttestationBundle, "signatures"> = {
     bundleVersion: "1",
     jobId: input.jobId,
@@ -135,7 +140,9 @@ function makeBundle(input: {
         primaryClaim: roleClaims.seller,
       },
     ],
-    phaseSummary: [{ ...input.phase, attestationRef: evidenceRef }],
+    phaseSummary: [
+      phaseAttestationRef === null ? { ...input.phase } : { ...input.phase, attestationRef: phaseAttestationRef },
+    ],
     vetRecords: [],
     settlementEvidence: [evidenceRef],
     recipeRegistryVersion: 1,
@@ -193,19 +200,30 @@ export function buildSessionBundleFixtures(): {
   const seller = keypairFromSeed(SELLER_SEED);
   const divergentBuyer = buildAttestationBundle0004().bundle;
   const divergentSeller = buildAttestationBundle0004Seller().bundle;
+  const phaseIndexMismatchEvidenceRef = ref("dacs-4-evidence", `evidence-${VERIFY_PHASE_INDEX_MISMATCH_JOB_ID}`, {
+    evidenceVersion: "1",
+    jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
+    phaseIndex: 0,
+    outcome: "ok",
+    checkedAt: VERIFY_REPUTATION_WINDOW_START + 100,
+  });
   const phaseIndexMismatchBuyer = makeBundle({
     jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
     outcome: "completed",
     finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_100,
-    phase: { index: 0, kind: "rate", outcome: "ok" },
+    phase: { index: 0, kind: "settle", outcome: "ok" },
     anchoredByRole: "buyer",
+    evidenceRef: phaseIndexMismatchEvidenceRef,
+    phaseAttestationRef: null,
   });
   const phaseIndexMismatchSeller = makeBundle({
     jobId: VERIFY_PHASE_INDEX_MISMATCH_JOB_ID,
     outcome: "completed",
     finalisedAt: VERIFY_REPUTATION_WINDOW_START + 1_100,
-    phase: { index: 1, kind: "rate", outcome: "ok" },
+    phase: { index: 1, kind: "settle", outcome: "ok" },
     anchoredByRole: "seller",
+    evidenceRef: phaseIndexMismatchEvidenceRef,
+    phaseAttestationRef: null,
   });
   const advisorySkewFinalisedAt = VERIFY_REPUTATION_WINDOW_START + 1_200;
   const advisorySkewAgreementCommittedAt = advisorySkewFinalisedAt - 5_000;
@@ -224,7 +242,7 @@ export function buildSessionBundleFixtures(): {
     jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
     outcome: "completed",
     finalisedAt: advisorySkewFinalisedAt,
-    phase: { index: 0, kind: "rate", outcome: "ok" },
+    phase: { index: 0, kind: "settle", outcome: "ok" },
     anchoredByRole: "buyer",
     agreementCommittedAt: advisorySkewAgreementCommittedAt,
     evidenceCheckedAt: advisorySkewEvidenceCheckedAt,
@@ -233,7 +251,7 @@ export function buildSessionBundleFixtures(): {
     jobId: VERIFY_ADVISORY_SKEW_JOB_ID,
     outcome: "completed",
     finalisedAt: advisorySkewFinalisedAt + 111,
-    phase: { index: 0, kind: "rate", outcome: "ok" },
+    phase: { index: 0, kind: "settle", outcome: "ok" },
     anchoredByRole: "seller",
     ratingRefs: [ref("dacs-5-rating", "advisory-rating", advisoryRatingRecord)],
     agreementCommittedAt: advisorySkewAgreementCommittedAt,

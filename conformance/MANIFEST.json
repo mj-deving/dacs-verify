@@ -1905,10 +1905,10 @@
           1
         ],
         "buyerPhaseKinds": [
-          "rate"
+          "settle"
         ],
         "sellerPhaseKinds": [
-          "rate"
+          "settle"
         ],
         "distinctHashes": true
       }
@@ -1925,10 +1925,10 @@
         "buyerDecision": "pass",
         "sellerDecision": "pass",
         "buyerPhaseKinds": [
-          "rate"
+          "settle"
         ],
         "sellerPhaseKinds": [
-          "rate"
+          "settle"
         ],
         "distinctHashes": true,
         "buyerRatingRefs": 0,
