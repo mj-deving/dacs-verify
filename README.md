@@ -14,6 +14,7 @@
 | `signing.ts` | §7.7 (SIG-1..4) | Closed domain-separator registry; signed-bytes builder; Ed25519 verify; cross-artifact-replay resistance. |
 | `dacs1.ts` | §6.3 | Claim-scheme parse, `find_claim`/`match` (incl. the §6.3.3 tier-laundering guard), listing addressing + validation order. |
 | `dacs5/bundle.ts` | §10.4 / §10.4.1 | Full `AttestationBundle` verification — JCS-sans-signatures hash, `dacs-bundle:v1:` domain-separated signatures, required-signer rule (buyer+seller, +distinct orchestrator; aborted bundles single-signed per §10.11, never unsigned), 4-value decision. |
+| `dacs5/evidenceBoundFaultBundle.ts` | Draft PR #290, SEB-1..SEB-6 | Experimental serialized-input adapter for the distinct `EvidenceBoundFaultAttestationBundle`; independently checks the Forge fixture, resolved-evidence bytes/signatures, raw-key claim binding, exact settlement-evidence mapping, signature domain, downgrade/replay rejection, and uncertainty precedence. Candidate evidence only, not released conformance. |
 | `report.ts` | CONTRIBUTING | Emits observations in the `§ + file + alternate-interpretation` format. |
 
 ## DACS-X dispute prototype (§11.2.1) — the primary deliverable

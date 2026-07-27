@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "candidateCommit": "2567c6c357d3fd28f75034b920258f2fd7da20d7",
+    "candidatePr": 290,
+    "releasedBase": "4bb9e48a1095ab32c06c25b7c0b52018d3ce4091"
+  },
+  "artifactCanonicalJson": "{\"agreementRef\":{\"anchor\":{\"kind\":\"storage-program\",\"locator\":\"dacs3:agreement:01J00000000000000000000000\"},\"contentHash\":\"2222222222222222222222222222222222222222222222222222222222222222\"},\"anchoredByRole\":\"buyer\",\"evidenceBoundFaultBundleVersion\":\"1\",\"faultedParty\":\"none\",\"finalisedAt\":1784073620000,\"jobId\":\"01J00000000000000000000000\",\"listingRef\":{\"contentHash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"listingId\":\"reference-json-transform-paid\",\"version\":1},\"outcome\":\"completed\",\"parties\":[{\"bundleHash\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"primaryClaim\":\"key:4e027c3f626240679d58dbd688591dc8572ceb9d6969966e87d1185b2cbee5e7\",\"role\":\"buyer\"},{\"bundleHash\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"primaryClaim\":\"key:65d31f88c2bc3a02b1af294824d1e1150942d7399398a628ff24d285c70b2ee9\",\"role\":\"seller\"}],\"phaseSummary\":[{\"attestationRef\":{\"anchor\":{\"kind\":\"storage-program\",\"locator\":\"dacs4:delivery-evidence:01J00000000000000000000000:3\"},\"contentHash\":\"2b380c2fcb533322f7ca58735b9edaae691ebffed86bd7e41cb46355206957b4\",\"signer\":\"key:65d31f88c2bc3a02b1af294824d1e1150942d7399398a628ff24d285c70b2ee9\"},\"index\":3,\"kind\":\"deliver-storage-program\",\"outcome\":\"ok\"}],\"railRegistryVersion\":1,\"recipeRegistryVersion\":1,\"settlementEvidence\":[{\"anchor\":{\"kind\":\"storage-program\",\"locator\":\"dacs4:delivery-evidence:01J00000000000000000000000:3\"},\"contentHash\":\"2b380c2fcb533322f7ca58735b9edaae691ebffed86bd7e41cb46355206957b4\",\"signer\":\"key:65d31f88c2bc3a02b1af294824d1e1150942d7399398a628ff24d285c70b2ee9\"}],\"signatures\":[{\"algorithm\":\"ed25519\",\"party\":\"key:4e027c3f626240679d58dbd688591dc8572ceb9d6969966e87d1185b2cbee5e7\",\"value\":\"BVg6IYLGOEx2GfCRkaRPxHDoswqiM6m8qmq42-K6ulLTYhEjVt0UioKS8QMHdAMC7d3uMIg3dsINyH4BAFJvBg\"},{\"algorithm\":\"ed25519\",\"party\":\"key:65d31f88c2bc3a02b1af294824d1e1150942d7399398a628ff24d285c70b2ee9\",\"value\":\"a3lisMbF28dHSzzrKEYmfvhDV07I7CE7RgefiJm4VyvAi5XHxa2aZ6Wpz5Cz3VU7Xmx6F7-F9HAHF4znDa3eCA\"}],\"vetRecords\":[]}",
+  "artifactContentHash": "64d5df9f12b48ccecf103dae9a1808fa4c27248885e1e226c33a4571a822e812",
+  "bundleHash": "ff61cf66e95d1613db83a4061c6185e330c646fb8502abb1cc8d709d5ce06562",
+  "expectedAnchoredByRole": "buyer",
+  "expectedJobId": "01J00000000000000000000000",
+  "expectedPhaseKeys": [
+    "3:deliver-storage-program"
+  ],
+  "publicKeys": {
+    "key:4e027c3f626240679d58dbd688591dc8572ceb9d6969966e87d1185b2cbee5e7": "TgJ8P2JiQGedWNvWiFkdyFcs651paZZuh9EYWyy-5ec",
+    "key:65d31f88c2bc3a02b1af294824d1e1150942d7399398a628ff24d285c70b2ee9": "ZdMfiMK8OgKxrylIJNHhFQlC1zmTmKYo_yTShccLLuk"
+  },
+  "resolvedEvidenceByRef": {
+    "{\"anchor\":{\"kind\":\"storage-program\",\"locator\":\"dacs4:delivery-evidence:01J00000000000000000000000:3\"},\"contentHash\":\"2b380c2fcb533322f7ca58735b9edaae691ebffed86bd7e41cb46355206957b4\",\"signer\":\"key:65d31f88c2bc3a02b1af294824d1e1150942d7399398a628ff24d285c70b2ee9\"}": {
+      "artifactCanonicalJson": "{\"deliverableAnchor\":{\"kind\":\"storage-program\",\"locator\":\"stor:fixture-deliverable\"},\"deliverableContentHash\":\"7777777777777777777777777777777777777777777777777777777777777777\",\"evidenceVersion\":\"1\",\"jobId\":\"01J00000000000000000000000\",\"observedAt\":1784073619999,\"outcome\":\"success\",\"paymentAmount\":{\"amount\":\"1\",\"currency\":\"DEM\"},\"phase\":\"deliver-storage-program\",\"signature\":{\"algorithm\":\"ed25519\",\"signer\":\"key:65d31f88c2bc3a02b1af294824d1e1150942d7399398a628ff24d285c70b2ee9\",\"value\":\"p7XSmljKHkDhSk1b3a4Z1iY-j-9t7ZQp4sTR32sGSRo0TEocStADJCtMr3eOjmL1JqPEftI_0yUUqjgPNnzyAw\"}}",
+      "phaseKey": "3:deliver-storage-program"
+    }
+  },
+  "unrelatedAuthorityDisposition": "verified",
+  "fixtureHash": "60e08c4dd4a7292efd460aa1a68da802a1363395513916fb33c09bc11ffecdf1"
+}
